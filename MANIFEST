@@ -1,0 +1,18 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/use.t
+t/parse.t
+t/test1.dat
+t/test2.dat
+lib/Parse/Win32Registry.pm
+lib/Parse/Win32Registry/Key.pm
+lib/Parse/Win32Registry/Value.pm
+lib/Parse/Win32Registry/Win95.pm
+lib/Parse/Win32Registry/Win95/Key.pm
+lib/Parse/Win32Registry/Win95/Value.pm
+lib/Parse/Win32Registry/WinNT.pm
+lib/Parse/Win32Registry/WinNT/Key.pm
+lib/Parse/Win32Registry/WinNT/Value.pm
+META.yml                                 Module meta-data (added by MakeMaker)
