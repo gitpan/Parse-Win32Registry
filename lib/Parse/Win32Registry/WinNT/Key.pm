@@ -17,8 +17,8 @@ sub new {
     my $regfile = shift;
     my $offset = shift; # offset to nk record relative to first hbin
 
-    croak "undefined regfile" unless defined $regfile;
-    croak "undefined offset" unless defined $offset;
+    die "internal error: undefined regfile" if !defined $regfile;
+    die "internal error: undefined offset" if !defined $offset;
 
     my $self = {};
     $self->{_regfile} = $regfile;
@@ -26,11 +26,16 @@ sub new {
     
     sysseek($regfile, OFFSET_TO_FIRST_HBIN + $offset, 0);
     sysread($regfile, my $nk_header, 0x50);
+    if (!defined($nk_header) || length($nk_header) != 0x50) {
+        croak "Could not read key",
+            sprintf(" at offset 0x%x\n", OFFSET_TO_FIRST_HBIN + $offset);
+    }
 
     # 0x00 dword = size (as negative number)
     # 0x04 word  = 'nk' signature
     # 0x06 word  = 2c 00 for root node, 20 00 for other nodes
     # 0x08 qword = timestamp
+    # 0x14 dword = offset to parent
     # 0x18 dword = number of subkeys
     # 0x20 dword = offset to subkey list (lf, lh, ri, li)
     # 0x28 dword = number of values
@@ -39,50 +44,53 @@ sub new {
     # 0x4e word  = class length
     # 0x50       = key name [for name length bytes]
 
-    my $size = (0xffffffff - unpack("V", $nk_header)) + 1;
+    my ($size,
+        $sig,
+        $node_type,
+        $timestamp,
+        $offset_to_parent,
+        $num_subkeys,
+        $offset_to_subkey_list,
+        $num_values,
+        $offset_to_value_list,
+        $name_length,
+        ) = unpack("Va2va8x4VVx4Vx4VVx28v", $nk_header);
+
+    #$size = (0xffffffff - $size) + 1;
     
-    my $sig = unpack("a2", substr($nk_header, 0x4, 2));
     if ($sig ne "nk") {
-        croak sprintf("invalid nk signature [$sig] at 0x%x+0x4\n",
-            OFFSET_TO_FIRST_HBIN + $offset),
+        croak "Invalid key signature",
+            sprintf(" at offset 0x%x\n",  + OFFSET_TO_FIRST_HBIN + $offset),
             hexdump($nk_header, OFFSET_TO_FIRST_HBIN + $offset);
     }
 
-    my $nk_node_type = unpack("v", substr($nk_header, 0x6, 2));
-    if ($nk_node_type == 0x2c) {
+    if ($node_type == 0x2c) {
         $self->{_is_root_key} = 1;
     }
-    elsif ($nk_node_type == 0x20) {
+    elsif ($node_type == 0x20) {
         $self->{_is_root_key} = 0;
     }
     else {
-        croak sprintf("invalid nk node type [0x%x] at 0x%x+0x6\n",
-            $nk_node_type,
-            OFFSET_TO_FIRST_HBIN + $offset),
+        croak "Invalid key node type",
+            sprintf(" at offset 0x%x\n",  + OFFSET_TO_FIRST_HBIN + $offset),
             hexdump($nk_header, OFFSET_TO_FIRST_HBIN + $offset);
     }
     
-    my $timestamp = unpack("a8", substr($nk_header, 0x8, 8));
+    $self->{_offset_to_parent} = $offset_to_parent;
+    $self->{_num_subkeys} = $num_subkeys;
+    $self->{_offset_to_subkey_list} = $offset_to_subkey_list;
+    $self->{_num_values} = $num_values;
+    $self->{_offset_to_value_list} = $offset_to_value_list;
+
     $self->{_timestamp} = decode_win32_filetime($timestamp);
 
-    my $name_length = unpack("v", substr($nk_header, 0x4c, 4));
-
     sysread($regfile, my $name, $name_length);
+    if (!defined($name) || length($name) != $name_length) {
+        croak "Could not read key name",
+            sprintf(" at offset 0x%x\n", OFFSET_TO_FIRST_HBIN + $offset);
+    }
+
     $self->{_name} = $name;
-
-    my $num_subkeys = unpack("V", substr($nk_header, 0x18, 4));
-    my $num_values  = unpack("V", substr($nk_header, 0x28, 4));
-    $self->{_num_subkeys} = $num_subkeys;
-    $self->{_num_values} = $num_values;
-
-    if ($num_subkeys > 0) {
-        $self->{_offset_to_subkey_list}
-            = unpack("V", substr($nk_header, 0x20, 4));
-    }
-    if ($num_values > 0) {
-        $self->{_offset_to_value_list}
-            = unpack("V", substr($nk_header, 0x2c, 4));
-    }
 
     bless $self, $class;
     return $self;
@@ -99,13 +107,74 @@ sub print_summary {
 sub print_debug {
     my $self = shift;
 
-	printf "%s @ 0x%x ",
-        $self->{_name},
-        OFFSET_TO_FIRST_HBIN + $self->{_offset};
+    print "$self->{_name} ";
+
+	printf "[nk @ 0x%x] ", OFFSET_TO_FIRST_HBIN + $self->{_offset};
     print "[r=$self->{_is_root_key}] ";
-	print "[$self->{_num_subkeys}] ";
-	print "[$self->{_num_values}] ";
+    printf "[p=0x%x] ", OFFSET_TO_FIRST_HBIN + $self->{_offset_to_parent};
+	printf "[k=%d,0x%x] ",
+        $self->{_num_subkeys},
+        ($self->{_offset_to_subkey_list} == 0xffffffff)
+        ? $self->{_offset_to_subkey_list}
+        : (OFFSET_TO_FIRST_HBIN + $self->{_offset_to_subkey_list});
+	printf "[v=%d,0x%x] ",
+        $self->{_num_values},
+        ($self->{_offset_to_value_list} == 0xffffffff)
+        ? $self->{_offset_to_value_list}
+        : (OFFSET_TO_FIRST_HBIN + $self->{_offset_to_value_list});
     print "[$self->{_timestamp}]\n";
+
+    # dump on-disk structures
+    if (1) {
+        my $regfile = $self->{_regfile};
+        sysseek($regfile, OFFSET_TO_FIRST_HBIN + $self->{_offset}, 0);
+        sysread($regfile, my $buffer, 0x50 + length($self->{_name}));
+        print hexdump($buffer, OFFSET_TO_FIRST_HBIN + $self->{_offset});
+    }        
+
+    # dump offset lists
+    if (1) {
+        my $regfile = $self->{_regfile};
+        my $num_subkeys = $self->{_num_subkeys};
+        my $num_values = $self->{_num_values};
+        if ($num_subkeys > 0) {
+            print "\tsubkey list:\n";
+            my $offset_to_subkey_list = $self->{_offset_to_subkey_list};
+            sysseek($regfile,
+                OFFSET_TO_FIRST_HBIN + $offset_to_subkey_list, 0);
+            sysread($regfile, my $subkey_list, 8 + 4 * $num_subkeys);
+            my $sig = unpack("x4a2", $subkey_list);
+            if ($sig eq "lf" || $sig eq "lh") {
+                sysseek($regfile,
+                    OFFSET_TO_FIRST_HBIN + $offset_to_subkey_list, 0);
+                sysread($regfile, $subkey_list, 8 + 8 * $num_subkeys);
+            }
+            print hexdump($subkey_list,
+                OFFSET_TO_FIRST_HBIN + $offset_to_subkey_list);
+
+            my $offsets_to_subkeys_ref = $self->get_offsets_to_subkeys;
+            foreach my $offset_to_subkey (@{$offsets_to_subkeys_ref}) {
+                printf "\t=> subkey @ 0x%x\n",
+                    OFFSET_TO_FIRST_HBIN + $offset_to_subkey;
+            }
+
+        }
+        if ($num_values > 0) {
+            print "\tvalue list:\n";
+            my $offset_to_value_list = $self->{_offset_to_value_list};
+            sysseek($regfile,
+                OFFSET_TO_FIRST_HBIN + $offset_to_value_list, 0);
+            sysread($regfile, my $buffer, 0x4 + 4 * $num_values);
+            print hexdump($buffer,
+                OFFSET_TO_FIRST_HBIN + $offset_to_value_list);
+
+            my $offsets_to_values_ref = $self->get_offsets_to_values;
+            foreach my $offset_to_value (@{$offsets_to_values_ref}) {
+                printf "\t=> value @ 0x%x\n",
+                    OFFSET_TO_FIRST_HBIN + $offset_to_value;
+            }
+        }
+    }
 }
 
 sub get_offsets_to_subkeys {
@@ -118,6 +187,10 @@ sub get_offsets_to_subkeys {
 
     sysseek($regfile, OFFSET_TO_FIRST_HBIN + $offset_to_subkey_list, 0);
     sysread($regfile, my $subkey_list_header, 8);
+    if (!defined($subkey_list_header) || length($subkey_list_header) != 8) {
+        croak "Could not read subkey list header at offset ",
+            sprintf("0x%x\n", OFFSET_TO_FIRST_HBIN + $offset_to_subkey_list);
+    }
 
     # 0x00 dword = size (as negative number)
     # 0x04 word  = 'lf' signature
@@ -154,42 +227,57 @@ sub get_offsets_to_subkeys {
     
     my @offsets_to_subkeys = ();
 
-    my ($size, $sig, $num_entries) = unpack("Va2v", $subkey_list_header);
+    my ($size,
+        $sig,
+        $num_entries,
+        ) = unpack("Va2v", $subkey_list_header);
+    
     $size = (0xffffffff - $size) + 1;
 
+    my $subkey_list_length;
+    if ($sig eq "lf" || $sig eq "lh") {
+        $subkey_list_length = 2 * 4 * $num_entries;
+    }
+    elsif ($sig eq "ri" || $sig eq "li") {
+        $subkey_list_length = 4 * $num_entries;
+    }
+    else {
+        croak "Invalid subkey list signature at offset ",
+            sprintf("0x%x\n", OFFSET_TO_FIRST_HBIN + $offset_to_subkey_list),
+            hexdump($subkey_list_header,
+                OFFSET_TO_FIRST_HBIN + $offset_to_subkey_list);
+    }
+
+    sysread($regfile, my $subkey_list, $subkey_list_length);
+    if (!defined($subkey_list) || length($subkey_list) != $subkey_list_length) {
+        croak "Could not read subkey list at offset ",
+            sprintf("0x%x\n", OFFSET_TO_FIRST_HBIN + $offset_to_subkey_list);
+    }
+
     if ($sig eq "lf") {
-        sysread($regfile, my $lf_record, 2 * 4 * $num_entries);
         for (my $i = 0; $i < $num_entries; $i++) {
-            my ($offset, $str) = unpack("VV", substr($lf_record, 8 * $i, 8));
+            my ($offset, $str) = unpack("VV", substr($subkey_list, 8 * $i, 8));
             push @offsets_to_subkeys, $offset;
         }
     }
     elsif ($sig eq "lh") {
-        sysread($regfile, my $lh_record, 2 * 4 * $num_entries);
         for (my $i = 0; $i < $num_entries; $i++) {
-            my ($offset, $hash) = unpack("VV", substr($lh_record, 8 * $i, 8));
+            my ($offset, $hash) = unpack("VV", substr($subkey_list, 8 * $i, 8));
             push @offsets_to_subkeys, $offset;
         }
     }
     elsif ($sig eq "ri") {
-        sysread($regfile, my $ri_record, 4 * $num_entries);
-        foreach my $offset (unpack("V$num_entries", $ri_record)) {
+        foreach my $offset (unpack("V$num_entries", $subkey_list)) {
             push @offsets_to_subkeys,
                  @{ $self->get_offsets_to_subkeys($offset) };
         }
     }
     elsif ($sig eq "li") {
-        sysread($regfile, my $li_record, 4 * $num_entries);
-        foreach my $offset (unpack("V$num_entries", $li_record)) {
+        foreach my $offset (unpack("V$num_entries", $subkey_list)) {
             push @offsets_to_subkeys, $offset;
         }
     }
-    else {
-        croak sprintf("invalid subkey list signature [$sig] at 0x%x+0x4\n",
-            OFFSET_TO_FIRST_HBIN + $offset_to_subkey_list),
-            hexdump($subkey_list_header,
-            OFFSET_TO_FIRST_HBIN + $offset_to_subkey_list);
-    }
+
     return \@offsets_to_subkeys;
 }
 
@@ -220,7 +308,7 @@ sub get_offsets_to_values {
     my $offset_to_value_list = $self->{_offset_to_value_list};
     
     my $num_values = $self->{_num_values};
-    croak "num_values is zero" if $num_values == 0; # sanity check
+    die "internal error: num_values is zero" if $num_values == 0;
 
     my @offsets_to_values = ();
     
@@ -230,11 +318,16 @@ sub get_offsets_to_values {
     # ...
 
     sysseek($regfile, OFFSET_TO_FIRST_HBIN + $offset_to_value_list, 0);
-    sysread($regfile, my $value_list, 0x4 + $num_values * 4);
+    my $value_list_length = 0x4 + $num_values * 4;
+    sysread($regfile, my $value_list, $value_list_length);
+    if (!defined($value_list) || length($value_list) != $value_list_length) {
+        croak "Could not read value list at offset ",
+            sprintf("0x%x\n", OFFSET_TO_FIRST_HBIN + $offset_to_value_list);
+    }
 
     my $size = (0xffffffff - unpack("V", $value_list)) + 1;
 
-    foreach my $offset (unpack("V$num_values", substr($value_list, 4))) {
+    foreach my $offset (unpack("x4V$num_values", $value_list)) {
         push @offsets_to_values, $offset;
     }
     

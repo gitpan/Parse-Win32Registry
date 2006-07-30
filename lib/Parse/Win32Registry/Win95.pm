@@ -11,7 +11,7 @@ sub new {
     my $class = shift; 
     my $filename = shift;
 
-    open my $regfile, $filename or croak "unable to open $filename: $!";
+    open my $regfile, "<", $filename or croak "Unable to open $filename: $!";
 
     # CREG Header
     # 0x00 dword = 'CREG' signature
@@ -20,10 +20,14 @@ sub new {
     # 0x0c
     # 0x10 word  = number of rgdb blocks
 
-    sysread($regfile, my $creg_header, 0x20);
+    sysread($regfile, my $creg_header, 32);
+    if (!defined($creg_header) || length($creg_header) != 32) {
+        croak "Could not read registry file header\n";
+    }
+
     my $creg_sig = unpack("a4", $creg_header);
     if ($creg_sig ne "CREG") {
-        croak "invalid registry file signature [$creg_sig]";
+        croak "Invalid registry file signature\n";
     }
 
     # RGKN Block Header
@@ -32,12 +36,15 @@ sub new {
     # 0x8 dword = offset to root key entry (relative to start of RGKN)
 
     sysseek($regfile, 0x20, 0);
-    sysread($regfile, my $rgkn_header, 0x20);
+    sysread($regfile, my $rgkn_header, 32);
+    if (!defined($rgkn_header) || length($rgkn_header) != 32) {
+        croak "Could not read RGKN header at offset 0x20\n";
+    }
+    
     my ($rgkn_sig, $rgkn_block_size, $offset_to_root_key)
         = unpack("a4VV", $rgkn_header);
     if ($rgkn_sig ne "RGKN") {
-        croak sprintf("invalid RGKN block signature [%s] at offset 0x%x",
-            $rgkn_sig, 0x20);
+        croak "Invalid RGKN block signature at offset 0x20\n";
     }
 
     my $self = {};

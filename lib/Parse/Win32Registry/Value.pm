@@ -51,6 +51,9 @@ sub get_data_as_string {
     my $type = $self->get_type;
     my $data = $self->get_data;
     if (!defined($data)) {
+        return "(invalid data)";
+    }
+    elsif (length($data) == 0) {
         return "(no data)";
     }
     elsif ($type == REG_SZ || $type == REG_EXPAND_SZ) {
@@ -58,11 +61,8 @@ sub get_data_as_string {
     }
     elsif ($type == REG_MULTI_SZ) {
         my @data = split("\x00", $data);
-        $data = "";
-        foreach (my $i = 0; $i < @data; $i++) {
-            $data .= "($i) " . $data[$i] . " ";
-        }
-        return $data;
+        my $i = -1;
+        return join(" ", map { $i++; "[$i] $_" } @data);
     }
     elsif ($type == REG_DWORD) {
         return sprintf "0x%08x", $data;

@@ -16,19 +16,28 @@ sub new {
     my $class = shift;
     my $filename = shift;
 
-    open my $regfile, $filename or croak "unable to open $filename: $!";
+    open my $regfile, "<", $filename or croak "Unable to open $filename: $!";
 
     sysread($regfile, my $regf_header, 0x30);
+    if (!defined($regf_header) || length($regf_header) != 0x30) {
+        croak "Could not read registry file header\n";
+    }
 
-    my $sig = unpack("a4", $regf_header);
-    if ($sig ne "regf") {
-        croak "not a registry file";
+    my $regf_sig = unpack("a4", $regf_header);
+    if ($regf_sig ne "regf") {
+        croak "Invalid registry file signature\n";
     }
     
     my $offset_to_first_key = unpack("x36 V", $regf_header);
 
     sysseek($regfile, OFFSET_TO_FIRST_HBIN + $offset_to_first_key, 0);
     sysread($regfile, my $nk_header, 0x8);
+    if (!defined($nk_header) || length($nk_header) != 0x8) {
+        croak "Could not read first key",
+            sprintf(" at offset 0x%x\n",
+                OFFSET_TO_FIRST_HBIN + $offset_to_first_key);
+    }
+
     if (substr($nk_header, 4, 4) eq "nk\x2c\x00") {
         my $self = {};
         $self->{_regfile} = $regfile;
@@ -37,7 +46,9 @@ sub new {
         return $self;
     }
     else {
-        croak "could not find root key";
+        croak "Did not find root key",
+            sprintf(" at offset 0x%x\n",
+                OFFSET_TO_FIRST_HBIN + $offset_to_first_key);
     }
 }
 
@@ -61,9 +72,6 @@ sub dump_file {
     sysread($regfile, my $regf_header, 0x30);
 
     my $sig = unpack("a4", $regf_header);
-    if ($sig ne "regf") {
-        croak "not a registry file";
-    }
     print "signature = '$sig'\n";
     
     my $lwt = unpack("x12a8", $regf_header);
@@ -136,6 +144,7 @@ sub dump_file {
                     $size, $offset; 
             }
 
+            last if $size == 0;
             $offset += $size;
         }
 

@@ -3,7 +3,7 @@ package Parse::Win32Registry;
 use strict;
 use warnings;
 
-our $VERSION = '0.20';
+our $VERSION = '0.21';
 
 # Exports have to be defined in a BEGIN { } so that any modules used
 # by this module that in turn use this module will see them.
@@ -66,10 +66,13 @@ use Parse::Win32Registry::WinNT;
 
 sub new {
     my $class = shift;
-    my $filename = shift or croak "no filename specified";
+    my $filename = shift or croak "No filename specified";
 
-    open my $regfile, $filename or croak "unable to open $filename: $!";
+    open my $regfile, "<", $filename or croak "Unable to open $filename: $!";
     sysread($regfile, my $sig, 4);
+    if (!defined($sig) || length($sig) != 4) {
+        croak "Could not read registry file header\n";
+    }
     close $regfile;
 
     if ($sig eq "CREG") {
@@ -81,14 +84,15 @@ sub new {
         return Parse::Win32Registry::WinNT->new($filename);
     }
     else {
-        croak "not a registry file";
+        croak "Not a registry file\n";
     }
 }
 
 # Thanks to Dan Sully's Audio::WMA for this
 sub decode_win32_filetime {
     my $packed_filetime = shift;
-    croak "invalid filetime length" if length($packed_filetime) != 8;
+    die "internal error: invalid filetime length"
+        if length($packed_filetime) != 8;
 	my ($low, $high) = unpack('VV', $packed_filetime);
 	my $filetime = $high * 2 ** 32 + $low;
     my $time = int(($filetime - 116444736000000000) / 10000000);
@@ -215,10 +219,13 @@ Parse::Win32Registry is a module for parsing Windows Registry files,
 allowing you to read the keys and values of a registry file
 without going through the Windows API.
 
-The module provides an object-oriented interface to the keys and values
+It provides an object-oriented interface to the keys and values
 in a registry file. Registry files are structured as trees of keys,
 with each key containing further subkeys or values.
-Both Windows 95 and Windows NT based registry files are supported.
+
+The module is intended to be cross-platform.
+It supports both Windows NT registry files (Windows NT, 2000, XP, 2003)
+and Windows 95 registry files (Windows 95, 98, and Millennium Edition).
 
 =head1 METHODS
 
@@ -302,8 +309,10 @@ while Windows 95 based registry keys only know how many values they have.
 
 =item $value->get_name
 
-Returns the name of the value. In both Windows 95 and Windows NT based
-registry files you can get values without a name.
+Returns the name of the value.
+In both Windows NT and Windows 95 based registry files
+you can get values without a name.
+This is returned as an empty string.
 
 =item $value->get_type
 
@@ -322,20 +331,19 @@ making it more suitable for printed output.
 
 Returns the data for the value.
 
-REG_SZ, REG_EXPAND_SZ, and REG_MULTI_SZ values
-will be returned directly from Windows 95 based registry files
-or converted from Unicode (UCS-2LE) for Windows NT based registry files.
-Any terminating null characters will be removed
-from REG_SZ and REG_EXPAND_SZ values.
+REG_SZ, REG_EXPAND_SZ, and REG_MULTI_SZ values will
+be returned as strings.
+The string data will be converted from Unicode (UCS-2LE) for Windows
+NT based registry files.
+Any terminating null characters will be removed from REG_SZ and
+REG_EXPAND_SZ values.
 To extract the component strings of a REG_MULTI_SZ value, you will need to
 use the built-in split function to separate on null characters.
 
 REG_DWORD values are unpacked and returned as integers.
+undef will be returned for REG_DWORD values that contain invalid data.
 
-undef will be returned for REG_DWORD values that do not have any data.
-For all other types, zero-length data is considered valid.
-
-All other types are returned as strings of binary data.
+All other types are returned as packed binary strings.
 
 =item $value->get_data_as_string
 
@@ -347,8 +355,11 @@ indices to more clearly show the number of elements, and
 REG_DWORD values will be returned as integers formatted as hex numbers;
 all other value types will be returned as a string of hex octets.
 
-"(no data)" will be returned for REG_DWORD values that do not have any data,
+"(invalid data)" will be returned
+for REG_DWORD values that contain invalid data,
 instead of the undef returned by get_data.
+
+"(no data)" will be returned if get_data returns an empty string.
 
 =item $value->print_summary
 

@@ -32,11 +32,25 @@ sub new {
 
 	sysseek($regfile, $offset, 0);
     sysread($regfile, my $rgdb_value_entry, 12);
+    if (!defined($rgdb_value_entry) || length($rgdb_value_entry) != 12) {
+        croak "Could not read RGDB entry for value",
+            sprintf(" at offset 0x%x\n", $offset);
+    }
+
     my ($value_type, $value_name_len, $value_data_len)
         = unpack("Vx4vv", $rgdb_value_entry);
 
     sysread($regfile, my $value_name, $value_name_len);
+    if (!defined($value_name) || length($value_name) != $value_name_len) {
+        croak "Could not read RGDB entry name for value",
+            sprintf(" at offset 0x%x\n", $offset);
+    }
+
     sysread($regfile, my $value_data, $value_data_len);
+    if (!defined($value_data) || length($value_data) != $value_data_len) {
+        croak "Could not read RGDB entry data for value",
+            sprintf(" at offset 0x%x\n", $offset);
+    }
 
     my $size_on_disk = length($rgdb_value_entry)
                      + $value_name_len
@@ -56,18 +70,25 @@ sub get_data {
     my $self = shift;
 
     my $type = $self->{_type};
-    croak "undefined type" if !defined($type);
+    die "internal error: undefined type" if !defined($type);
 
     my $data = $self->{_data};
-    croak "undefined data" if !defined($data);
+    die "internal error: undefined data" if !defined($data);
     
     # apply decoding to appropriate data types
     if ($type == REG_DWORD) {
-        croak "incorrect length for dword data" if length($data) != 4;
-        $data = unpack("V", $data);
+        if (length($data) == 4) {
+            $data = unpack("V", $data);
+        }
+        else {
+            #croak "incorrect length for dword data";
+            $data = undef;
+        }
     }
-    elsif ($type == REG_EXPAND_SZ) {
-        # snip off any terminating null
+    elsif ($type == REG_SZ || $type == REG_EXPAND_SZ) {
+        # Snip off any terminating null.
+        # Typically, REG_SZ values will not have a terminating null,
+        # while REG_EXPAND_SZ values will have a terminating null
         my $last_char = substr($data, -1, 1);
         if (ord($last_char) == 0) {
             $data = substr($data, 0, length($data) - 1);
@@ -90,21 +111,23 @@ sub print_summary {
 sub print_debug {
     my $self = shift;
 
-    my $name = $self->get_name || "(Default)";
-    print $name;
-    printf " @ 0x%x ", $self->{_offset};
+    print $self->{_name} || "''";
+
+    printf " [rgdb @ 0x%x] ", $self->{_offset};
 
     my $type = $self->get_type;
     my $type_as_string = $self->get_type_as_string;
     print "[type=$type] ($type_as_string) ";
 
     print "= ", $self->get_data_as_string, " ";
-    print "[len=", length($self->{_data}), "]\n";
+    print "[len=", defined($self->{_data})
+        ? length($self->{_data})
+        : "undefined", "]\n";
 
     print hexdump($self->{_data});
 
     # dump on-disk structure
-    if (0) {
+    if (1) {
         sysseek($self->{_regfile}, $self->{_offset}, 0);
         sysread($self->{_regfile}, my $buffer, $self->{_size_on_disk});
         print hexdump($buffer, $self->{_offset});

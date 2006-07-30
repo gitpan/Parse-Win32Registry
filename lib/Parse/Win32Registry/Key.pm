@@ -10,7 +10,7 @@ sub get_name {
 
     # the root key of a windows 95 registry has no defined name
     # but this should be set to "" in new
-    croak "name not defined" if !defined($self->{_name});
+    die "internal error: undefined name" if !defined($self->{_name});
 
     return $self->{_name};
 }

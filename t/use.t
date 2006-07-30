@@ -5,8 +5,10 @@
 
 # change 'tests => 1' to 'tests => last_test_to_print';
 
-use Test::More tests => 1;
+use Test::More tests => 2;
 BEGIN { use_ok('Parse::Win32Registry') };
+
+is($Parse::Win32Registry::VERSION, '0.21', "correct version");
 
 #########################
 

@@ -1,5 +1,32 @@
 Revision history for Perl extension Parse::Win32Registry.
 
+** 0.21 2006-07-30
+
+Checks added after every sysread, and an attempt made to improve the
+error messages presented. Internal error messages have been made
+distinct from errors generated when parsing invalid data.
+
+The code that looks up the RGDB entry for Win95 keys has been revised
+to remove some duplicate code. It's still too long.
+
+The use of substr and unpack when parsing new NT keys and values
+has been reduced.
+
+Reading REG_DWORD values which are not the expected four bytes in
+length no longer results in an exception. Similarly, get_data now
+returns undef for these values instead of failing.
+
+get_data_as_string updated to return (no data) when get_data returns
+an empty string, and (invalid data) when get_data returns undef (which
+should only occur for invalid REG_DWORD values).
+
+The undocumented print_debug methods have been updated and added to.
+Win95 keys and values could already dump their on-disk structures; now
+WinNT keys and values can dump their on-disk structures, and WinNT
+keys can dump their offset lists.
+
+Registry files are now opened using the three-argument version of open.
+
 ** 0.20 2006-07-23
 
 Released to CPAN.
