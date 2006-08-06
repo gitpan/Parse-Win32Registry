@@ -3,7 +3,7 @@ package Parse::Win32Registry;
 use strict;
 use warnings;
 
-our $VERSION = '0.21';
+our $VERSION = '0.22';
 
 # Exports have to be defined in a BEGIN { } so that any modules used
 # by this module that in turn use this module will see them.
@@ -68,7 +68,7 @@ sub new {
     my $class = shift;
     my $filename = shift or croak "No filename specified";
 
-    open my $regfile, "<", $filename or croak "Unable to open $filename: $!";
+    open my $regfile, "<", $filename or croak "Unable to open '$filename': $!";
     sysread($regfile, my $sig, 4);
     if (!defined($sig) || length($sig) != 4) {
         croak "Could not read registry file header\n";
@@ -91,7 +91,7 @@ sub new {
 # Thanks to Dan Sully's Audio::WMA for this
 sub decode_win32_filetime {
     my $packed_filetime = shift;
-    die "internal error: invalid filetime length"
+    die "unexpected error: invalid filetime length"
         if length($packed_filetime) != 8;
 	my ($low, $high) = unpack('VV', $packed_filetime);
 	my $filetime = $high * 2 ** 32 + $low;
@@ -247,7 +247,7 @@ contained in a registry file.
 
 =over 4
 
-=item $registry = Parse::Win32Registry->new( "filename" );
+=item $registry = Parse::Win32Registry->new( 'filename' );
 
 Creates a new Registry object for the specified registry file.
 
@@ -266,7 +266,7 @@ Returns the root Key object of the registry file.
 Returns the name of the key. The root key of a Windows 95 Registry
 does not have a name; this is returned as an empty string.
 
-=item $key->get_subkey( "key name" )
+=item $key->get_subkey( 'key name' )
 
 Returns a Key object for the specified subkey name.
 If a key with that name does not exist, nothing will be returned.
@@ -274,12 +274,12 @@ If a key with that name does not exist, nothing will be returned.
 You can specify a path to a subkey by separating keys
 using the path separator '\\'. For example:
 
-    $key->get_subkey("Software\\Microsoft\\Windows")
+    $key->get_subkey( 'Software\\Microsoft\\Windows' )
 
 A path is always relative to the current key.
 If any key in the path does not exist, nothing will be returned.
 
-=item $key->get_value( "value name" )
+=item $key->get_value( 'value name' )
 
 Returns a Value object for the specified value name.
 If a value with that name does not exist, nothing will be returned.
@@ -355,17 +355,17 @@ indices to more clearly show the number of elements, and
 REG_DWORD values will be returned as integers formatted as hex numbers;
 all other value types will be returned as a string of hex octets.
 
-"(invalid data)" will be returned
+'(invalid data)' will be returned
 for REG_DWORD values that contain invalid data,
 instead of the undef returned by get_data.
 
-"(no data)" will be returned if get_data returns an empty string.
+'(no data)' will be returned if get_data returns an empty string.
 
 =item $value->print_summary
 
 Prints the name, type, and data for the value.
 
-"(Default)" will be displayed for those values that do not have names.
+'(Default)' will be displayed for those values that do not have names.
 
 =back
 
@@ -390,6 +390,55 @@ The :REG_ tag exports all of the following constants:
     REG_RESOURCE_REQUIREMENTS_LIST
     REG_QWORD
 
+=head1 SCRIPTS
+
+The dumpreg.pl script installed with the module can be used
+to display the contents of a registry file.
+The root key will be displayed unless a subkey is specified;
+the path to a subkey is specified relative to the root key.
+To display all keys beneath a key, instead of just the specified key,
+use the --recurse option.
+
+    dumpreg.pl <filename> [subkey] [-r] [-q] [-i] [-d]
+        -r or --recurse     traverse all child keys from the root key
+                            or the subkey specified
+        -q or --quiet       do not display values
+        -i or --indent      indent subkeys and values to reflect their
+                            level in the registry tree
+        -d or --debug       display debugging information about
+                            subkeys and values
+
+=head1 TROUBLESHOOTING
+
+If you run into problems parsing a registry file, the error message
+will probably begin with 'Could not read...' or 'Invalid...'.
+Troubleshooting these messages is possible, but you will need to
+be comfortable dealing with binary data and be prepared to refer
+to the source for information on the internal registry data
+structures.
+
+'Could not read...' indicates that the code tried to read data that
+did not exist; this is typically because the offset to that data was
+invalid. To identify the source of the incorrect offset, you need to
+work down through the registry tree, key by key, until you reach the
+key or value that generates the error. Suspect the preceding key of
+holding invalid data.
+
+'Invalid...' indicates that the data was read successfully, but one of
+the checks failed. This will occur either because the offset to that
+data was invalid and points to the wrong place in the registry file
+(which can be troubleshot as for 'Could not read...'), or because the
+data being parsed is a new type of data structure. Unfortunately there
+is no easy way to distinguish these without becoming familiar with
+internal registry data structures. If you do think it is a new type of
+data structure, let the author know.
+
+The print_debug method can be used in place of the print_summary
+to display additional information about keys and values.
+This method has not been documented as it is not considered a stable
+part of the public interface, and its output is largely
+unintelligible to the unfamiliar. You may, however, find it useful.
+
 =head1 ACKNOWLEDGEMENTS
 
 This would not have been possible without the work of those people who have
@@ -402,6 +451,8 @@ and Petter Nordahl-Hagen (see chntpw's ntreg.h).
 =head1 AUTHOR
 
 James Macfarlane, E<lt>jmacfarla@cpan.orgE<gt>
+
+If you have any requests or contributions, contact me.
 
 =head1 COPYRIGHT AND LICENSE
 

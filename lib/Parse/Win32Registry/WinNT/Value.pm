@@ -17,18 +17,18 @@ sub new {
     my $regfile = shift;
     my $offset = shift; # offset to vk record relative to first hbin
 
-    die "internal error: undefined regfile" unless defined $regfile;
-    die "internal error: undefined offset" unless defined $offset;
+    die "unexpected error: undefined regfile" unless defined $regfile;
+    die "unexpected error: undefined offset" unless defined $offset;
 
     my $self = {};
     $self->{_regfile} = $regfile;
     $self->{_offset} = $offset;
 
-    sysseek($regfile, OFFSET_TO_FIRST_HBIN + $offset, 0);
+    sysseek($regfile, $offset, 0);
     sysread($regfile, my $vk_header, 0x18);
     if (!defined($vk_header) || length($vk_header) != 0x18) {
         croak "Could not read value at offset ",
-            sprintf("0x%x\n", OFFSET_TO_FIRST_HBIN + $offset);
+            sprintf("0x%x\n", $offset);
     }
 
     # 0x00 dword = size (as negative number)
@@ -41,6 +41,8 @@ sub new {
     # 0x16 word
     # 0x18       = value name [for name length bytes]
 
+    # Extracted offsets are always relative to first HBIN
+    
     my ($size,
         $sig,
         $name_length,
@@ -50,10 +52,12 @@ sub new {
         $name_present_flag,
         ) = unpack("Va2vVVVv", $vk_header);
 
+    $offset_to_data += OFFSET_TO_FIRST_HBIN;
+
     if ($sig ne "vk") {
-        croak "Invalid value signature at ",
-            sprintf("0x%x\n", OFFSET_TO_FIRST_HBIN + $offset),
-            hexdump($vk_header, OFFSET_TO_FIRST_HBIN + $offset);
+        croak "Invalid value signature at offset ",
+            sprintf("0x%x\n", $offset),
+            hexdump($vk_header, $offset);
     }
 
     my $name = "";
@@ -61,7 +65,7 @@ sub new {
         sysread($regfile, $name, $name_length);
         if (!defined($name) || length($name) != $name_length) {
             croak "Could not read value name at offset ",
-                sprintf("0x%x\n", OFFSET_TO_FIRST_HBIN + $offset);
+                sprintf("0x%x\n", $offset);
         }
     }
 
@@ -73,28 +77,28 @@ sub new {
         # REG_SZ, REG_BINARY, REG_EXPAND_SZ, and REG_NONE inline
         $data_length &= 0x7fffffff;
         if ($data_length > 4) {
-            croak "Invalid inline data length at offset",
-                sprintf("0x%x\n", OFFSET_TO_FIRST_HBIN + $offset);
+            croak "Invalid inline data length at offset ",
+                sprintf("0x%x\n", $offset);
         }
         $data = substr($vk_header, 0xc, $data_length);
         $self->{_data_inline} = 1;
     } else {
         # add 4 to skip the initial size dword
-        sysseek($regfile, OFFSET_TO_FIRST_HBIN + $offset_to_data + 4, 0);
+        sysseek($regfile, $offset_to_data + 4, 0);
         sysread($regfile, $data, $data_length);
         if (!defined($data) || length($data) != $data_length) {
             croak "Could not read data at offset ",
-                sprintf("0x%x\n", OFFSET_TO_FIRST_HBIN + $offset_to_data);
+                sprintf("0x%x\n", $offset_to_data);
         }
         $self->{_data_inline} = 0;
         $self->{_offset_to_data} = $offset_to_data;
     }
-    die "internal error: undefined name" if !defined($name);
-    die "internal error: undefined data" if !defined($data);
+    die "unexpected error: undefined name" if !defined($name);
+    die "unexpected error: undefined data" if !defined($data);
 
     # data integrity checks
     if ($data_length != length($data)) {
-        die "internal error: data is not the expected length";
+        die "unexpected error: data is not the expected length";
     }
     if ($type == REG_DWORD) {
         if ($data_length != 4) {
@@ -116,7 +120,7 @@ sub get_data {
     my $self = shift;
 
     my $type = $self->{_type};
-    die "internal error: undefined type" if !defined($type);
+    die "unexpected error: undefined type" if !defined($type);
 
     my $data = $self->{_data};
     my $data_length = $self->{_data_length};
@@ -160,14 +164,14 @@ sub print_summary {
 sub print_debug {
     my $self = shift;
 
-    print $self->{_name} || "''";
+    print $self->{_name} || "(Default)";
 
-    printf " [vk @ 0x%x,", OFFSET_TO_FIRST_HBIN + $self->{_offset};
+    printf " [vk @ 0x%x,", $self->{_offset};
     if ($self->{_data_inline}) {
         print "data inline";
     }
     else {
-        printf "data @ 0x%x", OFFSET_TO_FIRST_HBIN + $self->{_offset_to_data};
+        printf "data @ 0x%x", $self->{_offset_to_data};
     }
     print "] ";
 
@@ -176,22 +180,20 @@ sub print_debug {
     print "[type=$type] ($type_as_string) ";
 
     print "= ", $self->get_data_as_string, " ";
-    print "[len=", length($self->{_data}), "]\n";
+    print "[orig_len=", length($self->{_data}), "]\n";
 
     print hexdump($self->{_data});
 
     # dump on-disk structures
     if (1) {
         my $regfile = $self->{_regfile};
-        sysseek($regfile, OFFSET_TO_FIRST_HBIN + $self->{_offset}, 0);
+        sysseek($regfile, $self->{_offset}, 0);
         sysread($regfile, my $buffer, 0x18 + length($self->{_name}));
-        print hexdump($buffer, OFFSET_TO_FIRST_HBIN + $self->{_offset});
+        print hexdump($buffer, $self->{_offset});
         if (!$self->{_data_inline}) {
-            sysseek($regfile,
-                OFFSET_TO_FIRST_HBIN + $self->{_offset_to_data}, 0);
+            sysseek($regfile, $self->{_offset_to_data}, 0);
             sysread($regfile, my $buffer, 0x4 + length($self->{_data}));
-            print hexdump($buffer,
-                OFFSET_TO_FIRST_HBIN + $self->{_offset_to_data});
+            print hexdump($buffer, $self->{_offset_to_data});
         }
     }        
 }

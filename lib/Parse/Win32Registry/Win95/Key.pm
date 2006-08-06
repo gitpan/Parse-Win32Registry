@@ -16,10 +16,10 @@ use constant RGKN_ENTRY_SIZE => 28;
 sub new {
     my $class = shift;
     my $regfile = shift;
-    my $offset = shift; # offset to RGKN key entry from OFFSET_TO_RGKN_BLOCK
+    my $offset = shift; # offset to RGKN key entry relative to start of file
 
-    die "internal error: undefined regfile" if !defined $regfile;
-    die "internal error: undefined offset" if !defined $offset;
+    die "unexpected error: undefined regfile" if !defined $regfile;
+    die "unexpected error: undefined offset" if !defined $offset;
 
     my $self = {};
     $self->{_regfile} = $regfile;
@@ -27,13 +27,13 @@ sub new {
 
     # offset is a pointer to RGKN entry, relative to start of RGKN
 
-    return if $offset == 0xffffffff;
+    die if $offset == 0xffffffff;
 
-    sysseek($regfile, OFFSET_TO_RGKN_BLOCK + $offset, 0);
+    sysseek($regfile, $offset, 0);
     sysread($regfile, my $rgkn_entry, 28);
     if (!defined($rgkn_entry) || length($rgkn_entry) != 28) {
-        croak "Could not read RGKN entry for key",
-            sprintf(" at offset 0x%x\n", OFFSET_TO_RGKN_BLOCK + $offset);
+        croak "Could not read RGKN entry for key at offset ",
+            sprintf("0x%x\n", $offset);
     }
 
     # RGKN Key Entry
@@ -46,9 +46,11 @@ sub new {
     # 0x18 word  = id of RGDB entry
     # 0x1a word  = number of RGDB block
 
+    # Extracted offsets are relative to the start of the RGKN block
+
     # Any offset of 0xffffffff marks the end of a list.
-    # An id and block_num of 0xffff means the RGKN entry
-    # has no RGDB entry. This occurs for the root key RGKN entry
+    # An id and block_num of 0xffff means the RGKN entry has no RGDB entry. 
+    # This occurs for the root key's RGKN entry
     # (and presumably also for invalid RGKN entries).
 
     my ($hash,
@@ -57,6 +59,13 @@ sub new {
         $offset_to_next_sibling,
         $rgkn_key_id,
         $rgkn_block_num) = unpack("x4Vx4VVVvv", $rgkn_entry);
+
+    $offset_to_parent += OFFSET_TO_RGKN_BLOCK
+        if $offset_to_parent != 0xffffffff;
+    $offset_to_first_child += OFFSET_TO_RGKN_BLOCK
+        if $offset_to_first_child != 0xffffffff;
+    $offset_to_next_sibling += OFFSET_TO_RGKN_BLOCK
+        if $offset_to_next_sibling != 0xffffffff;
 
     $self->{_hash} = $hash;
     $self->{_offset_to_parent} = $offset_to_parent;
@@ -77,12 +86,13 @@ sub _look_up_rgdb_entry {
 	my $self = shift;
 
     my $regfile = $self->{_regfile};
+    my $offset = $self->{_offset};
     my $rgkn_key_id = $self->{_rgkn_key_id};
     my $rgkn_block_num = $self->{_rgkn_block_num};
 
-    die "internal error: undefined regfile" if !defined($regfile);
-    die "internal error: undefined rgkn_key_id" if !defined($rgkn_key_id);
-    die "internal error: undefined rgkn_block_num" if !defined($rgkn_block_num);
+    die "unexpected error: undefined regfile" if !defined($regfile);
+    die "unexpected error: undefined rgkn_key_id" if !defined($rgkn_key_id);
+    die "unexpected error: undefined rgkn_block_num" if !defined($rgkn_block_num);
 
     # The root key has an id of 0xffff and a block_num of 0xffff
     # and this cannot be successfully looked up in the RGDB blocks,
@@ -107,8 +117,8 @@ sub _look_up_rgdb_entry {
         $num_rgdb_blocks) = unpack("x8 V x4 v", $creg_header);
 
     if ($rgkn_block_num >= $num_rgdb_blocks) {
-        croak sprintf("RGDB block 0x%x does not exist",
-            $rgkn_block_num);
+        croak "Invalid RGKN block number for key at offset ",
+            sprintf("0x%x", $offset);
     }
 
     # skip block_num RGDB blocks:
@@ -121,14 +131,14 @@ sub _look_up_rgdb_entry {
         sysseek($regfile, $offset_to_rgdb_block, 0);
         sysread($regfile, my $rgdb_header, 32);
         if (!defined($rgdb_header) || length($rgdb_header) != 32) {
-            croak "Could not read RGDB block header",
-                sprintf(" at offset 0x%x\n", $offset_to_rgdb_block);
+            croak "Could not read RGDB block header at offset ",
+                sprintf("0x%x\n", $offset_to_rgdb_block);
         }
 
         my ($sig, $rgdb_block_size) = unpack("a4V", $rgdb_header);
         if ($sig ne "RGDB") {
-            croak "Invalid RGDB block signature",
-                sprintf(" at offset 0x%x", $offset_to_rgdb_block),
+            croak "Invalid RGDB block signature at offset ",
+                sprintf("0x%x\n", $offset_to_rgdb_block),
                 hexdump($rgdb_header, $offset_to_rgdb_block);
         }
 
@@ -143,7 +153,14 @@ sub _look_up_rgdb_entry {
         }
     }
 
-    croak sprintf("Could not find RGDB block 0x%x\n", $rgkn_block_num);
+    # Cannot reach this point without
+    # 1. finding the matching entry
+    # 2. finding the right block but not the matching entry
+    #    (fails with: "Could not find RGDB entry for key at ...")
+    # 3. not finding the block because the RGKN block number was too large
+    #    (fails with: "Invalid RGKN block number for key at ...")
+    # 4. not finding the block because the RGDB block did not exist
+    #    (fails with: "Could not read RGDB block header at ...")
 }
 
 sub _look_up_entry_in_rgdb_block {
@@ -151,18 +168,19 @@ sub _look_up_entry_in_rgdb_block {
     my $offset_to_rgdb_block = shift;
     my $rgdb_block_size = shift;
 
-    die "internal error: undefined offset_to_rgdb_block"
+    die "unexpected error: undefined offset_to_rgdb_block"
         if !defined($offset_to_rgdb_block);
-    die "internal error: undefined rgdb_block_size"
+    die "unexpected error: undefined rgdb_block_size"
         if !defined($rgdb_block_size);
 
     my $regfile = $self->{_regfile};
+    my $offset = $self->{_offset};
     my $rgkn_key_id = $self->{_rgkn_key_id};
     my $rgkn_block_num = $self->{_rgkn_block_num};
 
-    die "internal error: undefined regfile" if !defined($regfile);
-    die "internal error: undefined rgkn_key_id" if !defined($rgkn_key_id);
-    die "internal error: undefined rgkn_block_num" if !defined($rgkn_block_num);
+    die "unexpected error: undefined regfile" if !defined($regfile);
+    die "unexpected error: undefined rgkn_key_id" if !defined($rgkn_key_id);
+    die "unexpected error: undefined rgkn_block_num" if !defined($rgkn_block_num);
 
     # The first record in the RGDB block
     # begins immediately after the RGDB header
@@ -185,8 +203,8 @@ sub _look_up_entry_in_rgdb_block {
         sysseek($regfile, $offset_to_rgdb_entry, 0);
         sysread($regfile, my $rgdb_key_entry, 0x14);
         if (!defined($rgdb_key_entry) || length($rgdb_key_entry) != 0x14) {
-            croak "Could not read RGDB entry for key",
-                sprintf(" at offset 0x%x\n", $offset_to_rgdb_entry);
+            croak "Could not read RGDB entry for key at offset ",
+                sprintf("0x%x\n", $offset_to_rgdb_entry);
         }
 
         my ($rgdb_entry_size,
@@ -201,8 +219,8 @@ sub _look_up_entry_in_rgdb_block {
 
             sysread($regfile, my $name, $name_length);
             if (!defined($name) || length($name) != $name_length) {
-                croak "Could not read RGDB entry name for key",
-                    sprintf(" at offset 0x%x\n", $offset_to_rgdb_entry);
+                croak "Could not read RGDB entry name for key at offset ",
+                    sprintf("0x%x\n", $offset_to_rgdb_entry);
             }
 
 			$self->{_name} = $name;
@@ -216,15 +234,16 @@ sub _look_up_entry_in_rgdb_block {
         $offset_to_rgdb_entry += $rgdb_entry_size;
     }
 
-    croak sprintf("Could not find entry id 0x%x in RGDB block 0x%x\n",
-        $rgkn_key_id,$rgkn_block_num);
+    # Reached end of RGDB block without finding matching id
+    croak "Could not find RGDB entry for key at offset ",
+        sprintf("0x%x\n", $offset);
 }
 
 sub print_summary {
     my $self = shift;
 
 	print "$self->{_name} ";
-	print "[keys=?] ";
+	print "[subkeys=?] ";
 	print "[values=$self->{_num_values}]\n";
 }
 
@@ -233,7 +252,7 @@ sub print_debug {
 
     print "$self->{_name} ";
     printf "[rgkn @ 0x%x",
-        OFFSET_TO_RGKN_BLOCK + $self->{_offset};
+        $self->{_offset};
     if (defined($self->{_offset_to_rgdb_entry})) {
         printf ",rgdb @ 0x%x] ", $self->{_offset_to_rgdb_entry};
     }
@@ -241,24 +260,18 @@ sub print_debug {
         print ",no rgdb] ";
     }
     printf "[p=0x%x,c=0x%x,n=0x%x] ",
-        $self->{_offset_to_parent} != 0xffffffff
-            ? OFFSET_TO_RGKN_BLOCK + $self->{_offset_to_parent}
-            : $self->{_offset_to_parent},
-        $self->{_offset_to_first_child} != 0xffffffff
-            ? OFFSET_TO_RGKN_BLOCK + $self->{_offset_to_first_child}
-            : $self->{_offset_to_first_child},
-        $self->{_offset_to_next_sibling} != 0xffffffff
-            ? OFFSET_TO_RGKN_BLOCK + $self->{_offset_to_next_sibling}
-            : $self->{_offset_to_next_sibling};
+            $self->{_offset_to_parent},
+            $self->{_offset_to_first_child},
+            $self->{_offset_to_next_sibling};
     printf "[id=0x%x,0x%x] ", $self->{_rgkn_key_id}, $self->{_rgkn_block_num};
 	print "[k=?] ";
 	print "[v=$self->{_num_values}]\n";
 
     # dump on-disk structures
     if (1) {
-        sysseek($self->{_regfile}, OFFSET_TO_RGKN_BLOCK + $self->{_offset}, 0);
+        sysseek($self->{_regfile}, $self->{_offset}, 0);
         sysread($self->{_regfile}, my $buffer, 28);
-        print hexdump($buffer, OFFSET_TO_RGKN_BLOCK + $self->{_offset});
+        print hexdump($buffer, $self->{_offset});
         if (defined($self->{_offset_to_rgdb_entry})) {
             sysseek($self->{_regfile}, $self->{_offset_to_rgdb_entry}, 0);
             sysread($self->{_regfile}, $buffer, 0x14 + $self->{_name_length});
@@ -303,7 +316,7 @@ sub get_list_of_values {
     # It is assumed that all other keys should have a valid name
     # and entry in the RGDB block.
 	
-	die "internal error: rgdb entry not looked up"
+	die "unexpected error: rgdb entry not looked up"
         if !defined($self->{_offset_to_rgdb_entry});
 
     my @values = ();

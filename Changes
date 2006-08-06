@@ -1,5 +1,22 @@
 Revision history for Perl extension Parse::Win32Registry.
 
+** 0.22 2006-08-06
+
+Included the script dumpreg.pl as both a tool for examining
+registry files, and as an example.
+
+print_summary now displays 'subkeys' instead of 'keys' to make it
+clear what it was referring to.
+
+Offsets that require adjustment by fixed amounts (this applies to
+entries in the RGKN block of Windows 95 registry files and to all
+entries in the hbin blocks of Windows NT registry files) are now
+amended before being stored, rather than at seek time.
+
+More comprehensive tests have been added.
+
+Troubleshooting section added to the documentation.
+
 ** 0.21 2006-07-30
 
 Checks added after every sysread, and an attempt made to improve the

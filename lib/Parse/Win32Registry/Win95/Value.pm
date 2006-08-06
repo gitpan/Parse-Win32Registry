@@ -33,8 +33,8 @@ sub new {
 	sysseek($regfile, $offset, 0);
     sysread($regfile, my $rgdb_value_entry, 12);
     if (!defined($rgdb_value_entry) || length($rgdb_value_entry) != 12) {
-        croak "Could not read RGDB entry for value",
-            sprintf(" at offset 0x%x\n", $offset);
+        croak "Could not read RGDB entry for value at offset ",
+            sprintf("0x%x\n", $offset);
     }
 
     my ($value_type, $value_name_len, $value_data_len)
@@ -42,14 +42,14 @@ sub new {
 
     sysread($regfile, my $value_name, $value_name_len);
     if (!defined($value_name) || length($value_name) != $value_name_len) {
-        croak "Could not read RGDB entry name for value",
-            sprintf(" at offset 0x%x\n", $offset);
+        croak "Could not read RGDB entry name for value at offset ",
+            sprintf("0x%x\n", $offset);
     }
 
     sysread($regfile, my $value_data, $value_data_len);
     if (!defined($value_data) || length($value_data) != $value_data_len) {
-        croak "Could not read RGDB entry data for value",
-            sprintf(" at offset 0x%x\n", $offset);
+        croak "Could not read RGDB entry data for value at offset ",
+            sprintf("0x%x\n", $offset);
     }
 
     my $size_on_disk = length($rgdb_value_entry)
@@ -70,10 +70,10 @@ sub get_data {
     my $self = shift;
 
     my $type = $self->{_type};
-    die "internal error: undefined type" if !defined($type);
+    die "unexpected error: undefined type" if !defined($type);
 
     my $data = $self->{_data};
-    die "internal error: undefined data" if !defined($data);
+    die "unexpected error: undefined data" if !defined($data);
     
     # apply decoding to appropriate data types
     if ($type == REG_DWORD) {
@@ -111,7 +111,7 @@ sub print_summary {
 sub print_debug {
     my $self = shift;
 
-    print $self->{_name} || "''";
+    print $self->{_name} || "(Default)";
 
     printf " [rgdb @ 0x%x] ", $self->{_offset};
 
@@ -120,9 +120,7 @@ sub print_debug {
     print "[type=$type] ($type_as_string) ";
 
     print "= ", $self->get_data_as_string, " ";
-    print "[len=", defined($self->{_data})
-        ? length($self->{_data})
-        : "undefined", "]\n";
+    print "[orig_len=", length($self->{_data}), "]\n";
 
     print hexdump($self->{_data});
 
