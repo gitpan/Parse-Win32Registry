@@ -3,6 +3,7 @@ package Parse::Win32Registry::Win95;
 use strict;
 use warnings;
 
+use Parse::Win32Registry qw(as_iso8601);
 use Parse::Win32Registry::Win95::Key;
 
 use Carp;
@@ -74,6 +75,14 @@ sub get_root_key {
     my $root_key = Parse::Win32Registry::Win95::Key->new($regfile,
                                                          $offset_to_root_key);
     return $root_key;
+}
+
+sub get_timestamp {
+    return undef;
+}
+
+sub get_timestamp_as_string {
+    return as_iso8601(undef);
 }
 
 sub dump_file {

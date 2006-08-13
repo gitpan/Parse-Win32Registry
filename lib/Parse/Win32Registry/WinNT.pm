@@ -5,9 +5,8 @@ use warnings;
 
 use Carp;
 use Encode;
-use POSIX qw(strftime);
 
-use Parse::Win32Registry qw(decode_win32_filetime :REG_);
+use Parse::Win32Registry qw(decode_win32_filetime as_iso8601);
 use Parse::Win32Registry::WinNT::Key;
 
 use constant OFFSET_TO_FIRST_HBIN => 0x1000;
@@ -23,7 +22,7 @@ sub new {
         croak "Could not read registry file header\n";
     }
 
-    my $regf_sig = unpack("a4", $regf_header);
+    my ($regf_sig, $timestamp) = unpack("a4x8a8", $regf_header);
     if ($regf_sig ne "regf") {
         croak "Invalid registry file signature\n";
     }
@@ -42,6 +41,7 @@ sub new {
         my $self = {};
         $self->{_regfile} = $regfile;
         $self->{_offset_to_root_key} = $offset_to_first_key;
+        $self->{_timestamp} = decode_win32_filetime($timestamp);
         bless $self, $class;
         return $self;
     }
@@ -62,6 +62,18 @@ sub get_root_key {
     return $root_key;
 }
 
+sub get_timestamp {
+    my $self = shift;
+
+    return $self->{_timestamp};
+}
+
+sub get_timestamp_as_string {
+    my $self = shift;
+
+    return as_iso8601($self->{_timestamp});
+}
+
 sub dump_file {
     my $self = shift;
 
@@ -76,7 +88,7 @@ sub dump_file {
 
     my ($sig, $timestamp) = unpack("a4x8a8", $regf_header);
     print "File signature = '$sig'\n";
-    print "Timestamp = ", decode_win32_filetime($timestamp), "\n";
+    print "Timestamp = ", as_iso8601(decode_win32_filetime($timestamp)), "\n";
 
     sysread($regfile, my $embedded_filename, 0x40);
     if (!defined($embedded_filename) || length($embedded_filename) != 0x40) {

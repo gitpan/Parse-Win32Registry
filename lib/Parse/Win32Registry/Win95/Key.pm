@@ -5,7 +5,7 @@ use warnings;
 
 use base qw(Parse::Win32Registry::Key);
 
-use Parse::Win32Registry qw(hexdump :REG_);
+use Parse::Win32Registry qw(as_iso8601 hexdump);
 use Parse::Win32Registry::Win95::Value;
 
 use Carp;
@@ -237,6 +237,14 @@ sub _look_up_entry_in_rgdb_block {
     # Reached end of RGDB block without finding matching id
     croak "Could not find RGDB entry for key at offset ",
         sprintf("0x%x\n", $offset);
+}
+
+sub get_timestamp {
+    return undef;
+}
+
+sub get_timestamp_as_string {
+    return as_iso8601(undef);
 }
 
 sub print_summary {

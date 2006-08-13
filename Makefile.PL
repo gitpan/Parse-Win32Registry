@@ -7,9 +7,10 @@ WriteMakefile(
     PREREQ_PM       => {
         'Carp'        => 0,
         'Encode'      => 0,
-        'POSIX'       => 0,
+        'Time::Local' => 0,
         'Test::More'  => 0,
     },
     ABSTRACT_FROM   => 'lib/Parse/Win32Registry.pm',
     AUTHOR          => 'James Macfarlane',
+    EXE_FILES       => ['bin/dumpreg.pl'],
 );

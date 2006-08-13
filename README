@@ -18,7 +18,7 @@ On Win32 systems, you can use Microsoft's nmake.
 
 DEPENDENCIES
 
-This module requires the Carp, Encode, and POSIX modules.
+This module requires the Carp, Encode, and Time::Local modules.
 
 The tests require the Test::More module.
 

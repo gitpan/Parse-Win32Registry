@@ -1,5 +1,18 @@
 Revision history for Perl extension Parse::Win32Registry.
 
+** 0.23 2006-08-13
+
+Key objects now have the get_timestamp and get_timestamp_as_string
+methods, although only Windows NT registry keys will return valid
+values. print_summary nows also displays the timestamp for Windows NT
+registry keys. Documentation updated to reflect this.
+
+Tests for the support functions added decode_win32_filetime,
+as_iso8601, and hexdump added. Updated the key tests to check
+timestamps.
+
+Makefile.pl now installs the dumpreg.pl script.
+
 ** 0.22 2006-08-06
 
 Included the script dumpreg.pl as both a tool for examining

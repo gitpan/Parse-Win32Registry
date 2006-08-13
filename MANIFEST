@@ -7,6 +7,7 @@ t/values.t
 t/keys.t
 t/constants.t
 t/errors.t
+t/misc.t
 t/empty_file.rf
 t/invalid_creg_header.rf
 t/invalid_first_key.rf

@@ -5,7 +5,7 @@ use warnings;
 
 use base qw(Parse::Win32Registry::Key);
 
-use Parse::Win32Registry qw(decode_win32_filetime hexdump);
+use Parse::Win32Registry qw(decode_win32_filetime as_iso8601 hexdump);
 use Parse::Win32Registry::WinNT::Value;
 
 use Carp;
@@ -58,6 +58,8 @@ sub new {
         $name_length,
         ) = unpack("Va2va8x4VVx4Vx4VVx28v", $nk_header);
 
+    #$size = (0xffffffff - $size) + 1;
+    
     $offset_to_parent += OFFSET_TO_FIRST_HBIN
         if $offset_to_parent != 0xffffffff;
     $offset_to_subkey_list += OFFSET_TO_FIRST_HBIN
@@ -65,8 +67,6 @@ sub new {
     $offset_to_value_list += OFFSET_TO_FIRST_HBIN
         if $offset_to_parent != 0xffffffff;
 
-    #$size = (0xffffffff - $size) + 1;
-    
     if ($sig ne "nk") {
         croak "Invalid key signature at offset ",
             sprintf("0x%x\n", $offset),
@@ -105,12 +105,25 @@ sub new {
     return $self;
 }
 
+sub get_timestamp {
+    my $self = shift;
+
+    return $self->{_timestamp};
+}
+
+sub get_timestamp_as_string {
+    my $self = shift;
+
+    return as_iso8601($self->{_timestamp});
+}
+
 sub print_summary {
     my $self = shift;
 
     print "$self->{_name} ";
     print "[subkeys=$self->{_num_subkeys}] ";
-    print "[values=$self->{_num_values}]\n";
+    print "[values=$self->{_num_values}] ";
+    print "[", $self->get_timestamp_as_string, "]\n";
 }
 
 sub print_debug {
@@ -127,7 +140,7 @@ sub print_debug {
 	printf "[v=%d,0x%x] ",
         $self->{_num_values},
         $self->{_offset_to_value_list};
-    print "[$self->{_timestamp}]\n";
+    print "[", $self->get_timestamp_as_string, "]\n";
 
     # dump on-disk structures
     if (1) {

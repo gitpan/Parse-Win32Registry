@@ -3,7 +3,7 @@ package Parse::Win32Registry;
 use strict;
 use warnings;
 
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 
 # Exports have to be defined in a BEGIN { } so that any modules used
 # by this module that in turn use this module will see them.
@@ -11,6 +11,7 @@ BEGIN {
     our @EXPORT = qw();
     our @EXPORT_OK = qw(
         decode_win32_filetime
+        as_iso8601
         hexdump
         REG_NONE
         REG_SZ
@@ -59,7 +60,7 @@ use constant REG_RESOURCE_REQUIREMENTS_LIST => 10;
 use constant REG_QWORD => 11;
 
 use Carp;
-use POSIX qw(strftime);
+use Time::Local qw(timegm);
 
 use Parse::Win32Registry::Win95;
 use Parse::Win32Registry::WinNT;
@@ -95,11 +96,34 @@ sub decode_win32_filetime {
         if length($packed_filetime) != 8;
 	my ($low, $high) = unpack('VV', $packed_filetime);
 	my $filetime = $high * 2 ** 32 + $low;
-    my $time = int(($filetime - 116444736000000000) / 10000000);
-    return strftime("%Y-%m-%dT%H:%M:%SZ", gmtime $time);
-    #return 0 if ($time < 0);
-    #return 0x7fffffff if ($time > 0x7fffffff);
-    #return $time;
+    my $epoch_time = int(($filetime - 116444736000000000) / 10000000);
+
+    # adjust the UNIX epoch time to the local OS's epoch time
+    # (see perlport's Time and Date section)
+    my $offset = timegm(0, 0, 0, 1, 0, 70);
+    $epoch_time += $offset;
+
+    if ($epoch_time < 0) {
+        $epoch_time = undef;
+    }
+
+    return $epoch_time;
+}
+
+sub as_iso8601
+{
+    my $time = shift;
+
+    # check if we have been passed undef (i.e. an invalid date)
+    if (!defined($time)) {
+        return "(undefined)";
+    }
+
+    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday) = gmtime $time;
+
+    # The final 'Z' indicates UTC ("zero meridian")
+    return sprintf "%04d-%02d-%02dT%02d:%02d:%02dZ",
+        1900+$year, 1+$mon, $mday, $hour, $min, $sec;
 }
 
 sub hexdump
@@ -223,7 +247,9 @@ It provides an object-oriented interface to the keys and values
 in a registry file. Registry files are structured as trees of keys,
 with each key containing further subkeys or values.
 
-The module is intended to be cross-platform.
+The module is intended to be cross-platform, and run on those platforms
+where Perl will run.
+
 It supports both Windows NT registry files (Windows NT, 2000, XP, 2003)
 and Windows 95 registry files (Windows 95, 98, and Millennium Edition).
 
@@ -294,12 +320,33 @@ current key. If a key has no subkeys, an empty list will be returned.
 Returns a list of Value objects representing the values of the
 current key. If a key has no values, an empty list will be returned.
 
+=item $key->get_timestamp
+
+Returns the timestamp for the key as a time value
+suitable for passing to gmtime or localtime.
+
+Only Windows NT registry keys have a timestamp;
+Windows 95 registry keys do not.
+
+Returns nothing if the date is out of range
+or if called on a Windows 95 registry key.
+
+=item $key->get_timestamp_as_string
+
+Returns the timestamp as a ISO 8601 string,
+for example, '2010-05-30T13:57:11Z'.
+The Z indicates that the time is UTC ('Zero Meridian').
+
+Returns the string '(undefined)' if the date is out of range
+or if called on a Windows 95 registry key.
+
 =item $key->print_summary
 
 Prints the name, number of subkeys, and number of values for the key.
+The timestamp will also be printed for Windows NT registry keys.
 
-Windows NT based registry keys know how many subkeys and values they have,
-while Windows 95 based registry keys only know how many values they have.
+Windows NT registry keys know how many subkeys and values they have,
+while Windows 95 registry keys only know how many values they have.
 
 =back
 
