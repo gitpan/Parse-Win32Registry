@@ -15,6 +15,14 @@ sub get_name {
     return $self->{_name};
 }
 
+sub get_path {
+    my $self = shift;
+
+    die "unexpected error: undefined path" if !defined($self->{_path});
+
+    return $self->{_path};
+}
+
 sub _lookup_subkey {
     my $self = shift;
     my $subkey_name = shift;

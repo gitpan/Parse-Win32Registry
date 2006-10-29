@@ -7,8 +7,6 @@ use Parse::Win32Registry;
 use Getopt::Long;
 
 Getopt::Long::Configure('bundling');
-Getopt::Long::Configure('prefix_pattern=(--|-|\+|\/)');
-Getopt::Long::Configure('long_prefix_pattern=(--|\/)');
 
 my $debug;
 my $quiet;
@@ -28,7 +26,7 @@ my $root_key = $registry->get_root_key;
 if (defined($initial_key_name)) {
     $root_key = $root_key->get_subkey($initial_key_name);
     if (!defined($root_key)) {
-        die "Could not locate '$initial_key_name' key in '$filename'\n";
+        die "Could not locate the key '$initial_key_name' in '$filename'\n";
     }
 }
 
@@ -36,7 +34,6 @@ traverse($root_key);
 
 sub traverse {
     my $key = shift;
-    my $pathname = shift || "";
     my $depth = shift || 0;
 
     if ($indent) {
@@ -44,7 +41,7 @@ sub traverse {
     }
     else {
         print "\n" if !$quiet;
-        print "$pathname";
+        print $key->get_path, "\n";
     }
 	$debug ? $key->print_debug : $key->print_summary;
     
@@ -63,10 +60,9 @@ sub traverse {
         }
     }
     
-    $pathname .= $key->get_name . "\\";
     if ($recurse) {
         foreach my $subkey ($key->get_list_of_subkeys) {
-            traverse($subkey, $pathname, $depth + 1);
+            traverse($subkey, $depth + 1);
         }
     }
 }

@@ -16,6 +16,7 @@ sub new {
     my $class = shift;
     my $regfile = shift;
     my $offset = shift; # offset to nk record relative to start of file
+    my $path = shift; # optional path from parent
 
     die "unexpected error: undefined regfile" if !defined $regfile;
     die "unexpected error: undefined offset" if !defined $offset;
@@ -73,11 +74,8 @@ sub new {
             hexdump($nk_header, $offset);
     }
 
-    if ($node_type == 0x2c) {
-        $self->{_is_root_key} = 1;
-    }
-    elsif ($node_type == 0x20) {
-        $self->{_is_root_key} = 0;
+    if ($node_type == 0x2c || $node_type == 0x20 || $node_type == 0x00) {
+        $self->{_node_type} = $node_type;
     }
     else {
         croak "Invalid key node type at offset ",
@@ -100,6 +98,14 @@ sub new {
     }
 
     $self->{_name} = $name;
+
+    if (defined($path)) {
+        $path .= "\\$name";
+    }
+    else {
+        $path = $name;
+    }
+    $self->{_path} = $path;
 
     bless $self, $class;
     return $self;
@@ -132,7 +138,7 @@ sub print_debug {
     print "$self->{_name} ";
 
 	printf "[nk @ 0x%x] ", $self->{_offset};
-    print "[r=$self->{_is_root_key}] ";
+    printf "[t=0x%x] ", $self->{_node_type};
     printf "[p=0x%x] ", $self->{_offset_to_parent};
 	printf "[k=%d,0x%x] ",
         $self->{_num_subkeys},
@@ -297,6 +303,8 @@ sub get_offsets_to_subkeys {
 sub get_list_of_subkeys {
     my $self = shift;
 
+    my $path = $self->{_path};
+
     my $regfile = $self->{_regfile};
 
     my @subkeys = ();
@@ -306,7 +314,7 @@ sub get_list_of_subkeys {
 
         foreach my $offset_to_subkey (@{$offsets_to_subkeys_ref}) {
             my $subkey = Parse::Win32Registry::WinNT::Key->new($regfile,
-                                                           $offset_to_subkey);
+                                                     $offset_to_subkey, $path);
             push @subkeys, $subkey;
         }
     }

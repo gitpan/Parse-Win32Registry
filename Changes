@@ -1,5 +1,20 @@
 Revision history for Perl extension Parse::Win32Registry.
 
+** 0.24 2006-08-20
+
+Key objects now have a get_path method, which returns the path
+to that key from the root key of a registry file. Documentation
+updated to describe the new method.
+
+dumpreg.pl updated to use get_path. The prefix_pattern and
+long_prefix_pattern configuration options from Getopt::Long
+have been dropped.
+
+The node type check for Windows NT registry keys now accepts 0x00
+in addition to 0x20 and 0x2c.
+
+Tests updated to check paths for keys.
+
 ** 0.23 2006-08-13
 
 Key objects now have the get_timestamp and get_timestamp_as_string

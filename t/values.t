@@ -1,14 +1,12 @@
 use strict;
 use warnings;
 
-use blib;
-
 use Test::More 'no_plan';
 #use Test::More tests => 100;
 
 use Parse::Win32Registry qw(:REG_);
 
-die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.23';
+die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.24';
 
 sub find_file
 {

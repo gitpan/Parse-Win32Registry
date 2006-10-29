@@ -1,14 +1,12 @@
 use strict;
 use warnings;
 
-use blib;
-
 use Test::More 'no_plan';
 #use Test::More tests => 100;
 
 use Parse::Win32Registry qw(:REG_);
 
-die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.23';
+die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.24';
 
 # if offset is undef, then filename should be passed as string
 # if offset is specified, then filename should be opened and passed as handle,
@@ -240,13 +238,13 @@ foreach my $test (@tests) {
             if ($method) {
                 my $object;
                 ok(eval '$object = $object_name->new($regfile, $offset)',
-                    "$object_name->new(<$filename>, ...) succeeded");
+                    "$object_name->new('$filename', ...) succeeded");
                 ok(!eval '$object->$method',
                     "\$object->$method failed");
             }
             else {
                 ok(!eval '$object_name->new($regfile, $offset)',
-                    "$object_name->new(<$filename>, ...) failed");
+                    "$object_name->new('$filename', ...) failed");
             }
             
             close $regfile

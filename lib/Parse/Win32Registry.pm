@@ -3,7 +3,7 @@ package Parse::Win32Registry;
 use strict;
 use warnings;
 
-our $VERSION = '0.23';
+our $VERSION = '0.24';
 
 # Exports have to be defined in a BEGIN { } so that any modules used
 # by this module that in turn use this module will see them.
@@ -281,6 +281,10 @@ Creates a new Registry object for the specified registry file.
 
 Returns the root Key object of the registry file.
 
+The root key of a registry file is not the same as one of the virtual
+roots of the registry (HKEY_LOCAL_MACHINE, HKEY_USERS, etc) that you
+may be familiar with from using tools such as REGEDIT.
+
 =back
 
 =head2 Key Object Methods
@@ -290,7 +294,12 @@ Returns the root Key object of the registry file.
 =item $key->get_name
 
 Returns the name of the key. The root key of a Windows 95 Registry
-does not have a name; this is returned as an empty string.
+file does not have a name; this is returned as an empty string.
+
+=item $key->get_path
+
+Returns the path to the key. This is relative to the root key of the
+registry file, not a virtual root such as HKEY_LOCAL_MACHINE.
 
 =item $key->get_subkey( 'key name' )
 
@@ -439,12 +448,12 @@ The :REG_ tag exports all of the following constants:
 
 =head1 SCRIPTS
 
-The dumpreg.pl script installed with the module can be used
-to display the contents of a registry file.
-The root key will be displayed unless a subkey is specified;
-the path to a subkey is specified relative to the root key.
-To display all keys beneath a key, instead of just the specified key,
-use the --recurse option.
+dumpreg.pl is a script installed with the Win32::ParseRegistry module
+that you can use to work out the paths to keys or values you are
+interested in for your own scripts as well as being a command line
+utility for examining registry files.
+
+Type dumpreg.pl on its own to see the help:
 
     dumpreg.pl <filename> [subkey] [-r] [-q] [-i] [-d]
         -r or --recurse     traverse all child keys from the root key
@@ -454,6 +463,38 @@ use the --recurse option.
                             level in the registry tree
         -d or --debug       display debugging information about
                             subkeys and values
+
+The root key will be displayed unless a subkey is specified;
+paths to subkeys are always specified relative to the root key.
+By default, only the subkeys and values belonging to the specified
+key will be displayed; to display all keys and values beneath a key,
+use the -r or --recurse option.
+
+For example, dumpreg.pl ntuser.dat might display the following:
+
+    $$$PROTO.HIV [subkeys=9] [values=0]
+    = AppEvents (key)
+    = Console (key)
+    = Control Panel (key)
+    = Environment (key)
+    = Identities (key)
+    = Keyboard Layout (key)
+    = Printers (key)
+    = Software (key)
+    = UNICODE Program Groups (key)
+
+From here, you can explore the subkeys to find those keys or values
+you are interested in:
+
+    dumpreg.pl ntuser.dat software
+    dumpreg.pl ntuser.dat software\microsoft
+    dumpreg.pl ntuser.dat software\microsoft\windows
+    dumpreg.pl ntuser.dat software\microsoft\windows\currentversion
+    ...
+
+Remember to quote any subkey path that contains spaces:
+
+    dumpreg.pl ntuser.dat "keyboard layout"
 
 =head1 TROUBLESHOOTING
 

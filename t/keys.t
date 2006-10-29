@@ -1,14 +1,12 @@
 use strict;
 use warnings;
 
-use blib;
-
 use Test::More 'no_plan';
 #use Test::More tests => 100;
 
 use Parse::Win32Registry qw(:REG_);
 
-die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.23';
+die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.24';
 
 sub find_file
 {
@@ -20,6 +18,8 @@ sub run_key_tests
 {
     my $root_key = shift;
     my @tests = @_;
+
+    my $root_key_name = $root_key->get_name; # should already be tested
 
     foreach my $test (@tests) {
         my ($path,
@@ -33,6 +33,8 @@ sub run_key_tests
         ok(defined($key), "$name defined");
         is($key->get_name, $name, "$name name");
         
+        is($key->get_path, "$root_key_name\\$path", "$name path");
+
         my @subkeys = $key->get_list_of_subkeys;
         is(@subkeys, $num_subkeys, "$name has $num_subkeys subkeys");
         my @values = $key->get_list_of_values;
@@ -64,6 +66,7 @@ sub run_key_tests
     ok(defined($registry), 'root key defined');
     isa_ok($root_key, 'Parse::Win32Registry::Win95::Key');
     is($root_key->get_name, '', 'root key name');
+    is($root_key->get_path, '', 'root key path');
 
     my @tests = (
         ['key1',       'key1', 3, 0, undef, '(undefined)'],
@@ -92,6 +95,7 @@ sub run_key_tests
     ok(defined($registry), 'root key defined');
     isa_ok($root_key, 'Parse::Win32Registry::WinNT::Key');
     is($root_key->get_name, '$$$PROTO.HIV', 'root key name');
+    is($root_key->get_path, '$$$PROTO.HIV', 'root key path');
 
     my @tests = (
         ['key1',       'key1', 3, 0, 993752854,  '2001-06-28T18:27:34Z'],

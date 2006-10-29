@@ -17,6 +17,7 @@ sub new {
     my $class = shift;
     my $regfile = shift;
     my $offset = shift; # offset to RGKN key entry relative to start of file
+    my $path = shift; # optional path from parent
 
     die "unexpected error: undefined regfile" if !defined $regfile;
     die "unexpected error: undefined offset" if !defined $offset;
@@ -79,6 +80,15 @@ sub new {
     # look up RGDB entry to determine the key's name and value list
 	$self->_look_up_rgdb_entry;
 	
+    my $name = $self->{_name};
+    if (defined($path)) {
+        $path .= "\\$name";
+    }
+    else {
+        $path = $name;
+    }
+    $self->{_path} = $path;
+
     return $self;
 }
 
@@ -291,6 +301,8 @@ sub print_debug {
 sub get_list_of_subkeys {
     my $self = shift;
 
+    my $path = $self->{_path};
+
     my @subkeys = ();
 
     my $regfile = $self->{_regfile};
@@ -298,11 +310,11 @@ sub get_list_of_subkeys {
 
     if ($offset_to_first_child != 0xffffffff) {
         my $key = Parse::Win32Registry::Win95::Key->new($regfile,
-                                                       $offset_to_first_child);
+                                                $offset_to_first_child, $path);
         push @subkeys, $key;
         while ($key->{_offset_to_next_sibling} != 0xffffffff) {
             $key = Parse::Win32Registry::Win95::Key->new($regfile,
-                                              $key->{_offset_to_next_sibling});
+                                       $key->{_offset_to_next_sibling}, $path);
             push @subkeys, $key;
         }
     }
