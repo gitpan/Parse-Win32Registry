@@ -3,7 +3,7 @@ package Parse::Win32Registry;
 use strict;
 use warnings;
 
-our $VERSION = '0.24';
+our $VERSION = '0.25';
 
 # Exports have to be defined in a BEGIN { } so that any modules used
 # by this module that in turn use this module will see them.

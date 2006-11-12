@@ -16,7 +16,7 @@ sub new {
     my $class = shift;
     my $regfile = shift;
     my $offset = shift; # offset to nk record relative to start of file
-    my $path = shift; # optional path from parent
+    my $ancestor_key_list = shift; # names of ancestor keys
 
     die "unexpected error: undefined regfile" if !defined $regfile;
     die "unexpected error: undefined offset" if !defined $offset;
@@ -64,9 +64,9 @@ sub new {
     $offset_to_parent += OFFSET_TO_FIRST_HBIN
         if $offset_to_parent != 0xffffffff;
     $offset_to_subkey_list += OFFSET_TO_FIRST_HBIN
-        if $offset_to_parent != 0xffffffff;
+        if $offset_to_subkey_list != 0xffffffff;
     $offset_to_value_list += OFFSET_TO_FIRST_HBIN
-        if $offset_to_parent != 0xffffffff;
+        if $offset_to_value_list != 0xffffffff;
 
     if ($sig ne "nk") {
         croak "Invalid key signature at offset ",
@@ -99,13 +99,10 @@ sub new {
 
     $self->{_name} = $name;
 
-    if (defined($path)) {
-        $path .= "\\$name";
+    if (!defined($ancestor_key_list)) {
+        $ancestor_key_list = [];
     }
-    else {
-        $path = $name;
-    }
-    $self->{_path} = $path;
+    $self->{_path_list} = [@$ancestor_key_list, $name];
 
     bless $self, $class;
     return $self;
@@ -303,7 +300,7 @@ sub get_offsets_to_subkeys {
 sub get_list_of_subkeys {
     my $self = shift;
 
-    my $path = $self->{_path};
+    my $path_list = $self->{_path_list};
 
     my $regfile = $self->{_regfile};
 
@@ -314,7 +311,7 @@ sub get_list_of_subkeys {
 
         foreach my $offset_to_subkey (@{$offsets_to_subkeys_ref}) {
             my $subkey = Parse::Win32Registry::WinNT::Key->new($regfile,
-                                                     $offset_to_subkey, $path);
+                                                $offset_to_subkey, $path_list);
             push @subkeys, $subkey;
         }
     }

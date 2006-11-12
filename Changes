@@ -1,6 +1,15 @@
 Revision history for Perl extension Parse::Win32Registry.
 
-** 0.24 2006-08-20
+** 0.25 2006-11-12
+
+Fixed bug in creation of WinNT key objects when parsing offsets
+to parent keys. Test data for Windows NT registry keys updated
+with valid parent key offsets.
+
+Internally, the path to a key is now stored as a list instead
+of a string.
+
+** 0.24 2006-10-29
 
 Key objects now have a get_path method, which returns the path
 to that key from the root key of a registry file. Documentation

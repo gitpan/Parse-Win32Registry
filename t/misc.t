@@ -6,7 +6,7 @@ use Test::More 'no_plan';
 
 use Parse::Win32Registry qw(decode_win32_filetime as_iso8601 hexdump);
 
-die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.24';
+die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.25';
 
 my @tests = (
     ["\x80\x83\x61\x67\xb3\xdb\xc5\x01", 1130499203, '2005-10-28T11:33:23Z'],

@@ -6,7 +6,7 @@ use Test::More 'no_plan';
 
 use Parse::Win32Registry qw(:REG_);
 
-die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.24';
+die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.25';
 
 # if offset is undef, then filename should be passed as string
 # if offset is specified, then filename should be opened and passed as handle,

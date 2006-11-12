@@ -6,7 +6,7 @@ use Test::More 'no_plan';
 
 use Parse::Win32Registry qw(:REG_);
 
-die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.24';
+die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.25';
 
 sub find_file
 {
