@@ -1,13 +1,36 @@
 Revision history for Perl extension Parse::Win32Registry.
 
+** 0.30 2007-07-01
+
+Added two new scripts: regfind.pl for searching keys, values, and data
+for a search string, and regdiff.pl for comparing two registry files
+and displaying the differences. dumpreg.pl renamed to regdump.pl and
+command line options simplified.
+
+Introduced the as_string method for Key and Value objects. This is
+intended to be a more usable replacement for the print_summary
+method.
+
+The get_data_as_string method changed to return REG_DWORD values as a
+hexadecimal number followed by its decimal equivalent. Clarified that
+REG_DWORD values are returned as unsigned integers.
+
+Support functions convert_filetime_to_epoch_time and iso8601
+documented.
+
+Fixed bugs in the handling of unusual names in the get_subkey method.
+
+Synopsis overhauled.
+
 ** 0.25 2006-11-12
 
-Fixed bug in creation of WinNT key objects when parsing offsets
-to parent keys. Test data for Windows NT registry keys updated
-with valid parent key offsets.
+Fixed a bug with new WinNT key objects incorrectly setting the offsets
+to subkey lists and value lists when the offset to the parent key had
+a particular value. Test data for Windows NT registry keys updated with
+parent key offsets that would trigger the bug.
 
-Internally, the path to a key is now stored as a list instead
-of a string.
+Internally, the path to a key is now stored as a list instead of a
+string.
 
 ** 0.24 2006-10-29
 

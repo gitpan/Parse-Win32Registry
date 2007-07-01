@@ -2,11 +2,15 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-#use Test::More tests => 100;
 
-use Parse::Win32Registry qw(:REG_);
+use Data::Dumper;
+$Data::Dumper::Useqq = 1;
+$Data::Dumper::Terse = 1;
+$Data::Dumper::Indent = 0;
 
-die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.25';
+use Parse::Win32Registry qw(:REG_); # :REG_ constants are tested elsewhere
+
+die 'Incorrect version' if $Parse::Win32Registry::VERSION != '0.30';
 
 sub find_file
 {
@@ -23,22 +27,29 @@ sub run_value_tests
         my ($name, $type, $type_as_string, $data, $data_as_string)
             = @{ $test };
         my $value = $key->get_value($name);
-        ok(defined($value), "'$name' defined");
-        is($value->get_name, $name, "'$name' name");
-        is($value->get_type, $type, "'$name' type");
-        is($value->get_type_as_string, $type_as_string, "'$name' type_as_string");
+        ok(defined($value), 'value defined');
+        is($value->get_name, $name, 'get_name eq ' . Dumper($name));
+        is($value->get_type, $type, "get_type == $type");
+        is($value->get_type_as_string, $type_as_string,
+            "get_type_as_string eq '$type_as_string'");
         if (defined($data)) {
             if ($type == REG_DWORD) {
-                cmp_ok($value->get_data, '==', $data, "'$name' data");
+                cmp_ok($value->get_data, '==', $data, "get_data == $data");
             }
             else {
-                is($value->get_data, $data, "'$name' data");
+                is($value->get_data, $data, 'get_data eq ' . Dumper($data));
             }
         }
         else {
-            ok(!defined($value->get_data), "'$name' data");
+            ok(!defined($value->get_data), 'get_data undefined');
         }
-        is($value->get_data_as_string, $data_as_string, "'$name' data_as_string");
+        is($value->get_data_as_string, $data_as_string,
+            'get_data_as_string eq ' . Dumper($data_as_string));
+        my $name_or_default = $name eq '' ? '(Default)' : $name;
+        my $value_as_string
+            = "$name_or_default ($type_as_string) = $data_as_string";
+        is($value->as_string, $value_as_string,
+            'as_string eq ' . Dumper($value_as_string));
     }
 }
 
@@ -47,7 +58,7 @@ sub run_value_tests
 
     my $registry = Parse::Win32Registry->new($filename);
     ok(defined($registry), 'registry defined');
-    isa_ok($registry, 'Parse::Win32Registry::Win95');
+    isa_ok($registry, 'Parse::Win32Registry::Win95::File');
 
     my $root_key = $registry->get_root_key;
     ok(defined($registry), 'root key defined');
@@ -69,10 +80,14 @@ sub run_value_tests
         ['expand_sz4', REG_EXPAND_SZ, 'REG_EXPAND_SZ', '', '(no data)'],
         ['binary1', REG_BINARY, 'REG_BINARY', "\x01\x02\x03\x04\x05\x06\x07\x08", '01 02 03 04 05 06 07 08'],
         ['binary2', REG_BINARY, 'REG_BINARY', '', '(no data)'],
-        ['dword1', REG_DWORD, 'REG_DWORD', 1, '0x00000001'],
+        ['dword1', REG_DWORD, 'REG_DWORD', 67305985, '0x04030201 (67305985)'],
         ['dword2', REG_DWORD, 'REG_DWORD', undef, '(invalid data)'],
         ['dword3', REG_DWORD, 'REG_DWORD', undef, '(invalid data)'],
         ['dword4', REG_DWORD, 'REG_DWORD', undef, '(invalid data)'],
+        ['dword5', REG_DWORD, 'REG_DWORD', 0, '0x00000000 (0)'],
+        ['dword6', REG_DWORD, 'REG_DWORD', 0x7fffffff, '0x7fffffff (2147483647)'],
+        ['dword7', REG_DWORD, 'REG_DWORD', 0x80000000, '0x80000000 (2147483648)'],
+        ['dword8', REG_DWORD, 'REG_DWORD', 0xffffffff, '0xffffffff (4294967295)'],
         ['multi_sz1', REG_MULTI_SZ, 'REG_MULTI_SZ', "String1\c@String2\c@String3\c@\c@", '[0] String1 [1] String2 [2] String3'],
         ['multi_sz2', REG_MULTI_SZ, 'REG_MULTI_SZ', "String1\c@\c@", '[0] String1'],
         ['multi_sz3', REG_MULTI_SZ, 'REG_MULTI_SZ', "String1\c@", '[0] String1'],
@@ -81,6 +96,7 @@ sub run_value_tests
         ['multi_sz6', REG_MULTI_SZ, 'REG_MULTI_SZ', "\c@", ''],
         ['multi_sz7', REG_MULTI_SZ, 'REG_MULTI_SZ', "", '(no data)'],
         ['', REG_SZ, 'REG_SZ', 'www.perl.com', 'www.perl.com'],
+        ['0', REG_SZ, 'REG_SZ', 'www.perl.com', 'www.perl.com'],
     );
     run_value_tests($key1, @tests);
 }
@@ -89,7 +105,7 @@ sub run_value_tests
     my $filename = find_file('winnt_value_tests.rf');
 
     my $registry = Parse::Win32Registry->new($filename);
-    isa_ok($registry, 'Parse::Win32Registry::WinNT');
+    isa_ok($registry, 'Parse::Win32Registry::WinNT::File');
 
     my $root_key = $registry->get_root_key;
     isa_ok($root_key, 'Parse::Win32Registry::WinNT::Key');
@@ -119,13 +135,17 @@ sub run_value_tests
         ['expand_sz8', REG_EXPAND_SZ, 'REG_EXPAND_SZ', '', '(no data)'],
         ['binary1', REG_BINARY, 'REG_BINARY', "\x01\x02\x03\x04\x05\x06\x07\x08", '01 02 03 04 05 06 07 08'],
         ['binary2', REG_BINARY, 'REG_BINARY', '', '(no data)'],
-        ['dword1', REG_DWORD, 'REG_DWORD', 1, '0x00000001'],
+        ['dword1', REG_DWORD, 'REG_DWORD', 1, '0x00000001 (1)'],
         ['dword3', REG_DWORD, 'REG_DWORD', undef, '(invalid data)'],
         ['dword4', REG_DWORD, 'REG_DWORD', undef, '(invalid data)'],
-        ['dword5', REG_DWORD, 'REG_DWORD', 0x04030201, '0x04030201'],
+        ['dword5', REG_DWORD, 'REG_DWORD', 0x04030201, '0x04030201 (67305985)'],
         ['dword6', REG_DWORD, 'REG_DWORD', undef, '(invalid data)'],
         ['dword7', REG_DWORD, 'REG_DWORD', undef, '(invalid data)'],
         ['dword8', REG_DWORD, 'REG_DWORD', undef, '(invalid data)'],
+        ['dword9', REG_DWORD, 'REG_DWORD', 0, '0x00000000 (0)'],
+        ['dword10', REG_DWORD, 'REG_DWORD', 0x7fffffff, '0x7fffffff (2147483647)'],
+        ['dword11', REG_DWORD, 'REG_DWORD', 0x80000000, '0x80000000 (2147483648)'],
+        ['dword12', REG_DWORD, 'REG_DWORD', 0xffffffff, '0xffffffff (4294967295)'],
         ['multi_sz1', REG_MULTI_SZ, 'REG_MULTI_SZ', "String1\c@String2\c@String3\c@\c@", '[0] String1 [1] String2 [2] String3'],
         ['multi_sz2', REG_MULTI_SZ, 'REG_MULTI_SZ', "String1\c@\c@", '[0] String1'],
         ['multi_sz3', REG_MULTI_SZ, 'REG_MULTI_SZ', "String1\c@", '[0] String1'],
@@ -134,6 +154,7 @@ sub run_value_tests
         ['multi_sz6', REG_MULTI_SZ, 'REG_MULTI_SZ', "\c@", ''],
         ['multi_sz7', REG_MULTI_SZ, 'REG_MULTI_SZ', "", '(no data)'],
         ['', REG_SZ, 'REG_SZ', 'www.perl.com', 'www.perl.com'],
+        ['0', REG_SZ, 'REG_SZ', 'www.perl.com', 'www.perl.com'],
     );
     run_value_tests($key1, @tests);
 }

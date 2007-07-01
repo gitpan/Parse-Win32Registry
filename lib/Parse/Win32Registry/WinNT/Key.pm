@@ -5,7 +5,7 @@ use warnings;
 
 use base qw(Parse::Win32Registry::Key);
 
-use Parse::Win32Registry qw(decode_win32_filetime as_iso8601 hexdump);
+use Parse::Win32Registry qw(convert_filetime_to_epoch_time iso8601 hexdump);
 use Parse::Win32Registry::WinNT::Value;
 
 use Carp;
@@ -74,11 +74,12 @@ sub new {
             hexdump($nk_header, $offset);
     }
 
-    if ($node_type == 0x2c || $node_type == 0x20 || $node_type == 0x00) {
-        $self->{_node_type} = $node_type;
-    }
-    else {
-        croak "Invalid key node type at offset ",
+    $self->{_node_type} = $node_type;
+    if ($node_type != 0x2c && $node_type != 0x20 &&
+        $node_type != 0x00 && $node_type != 0x1020 &&
+        $node_type != 0xac && $node_type != 0xa0
+    ) {
+        carp "Invalid key node type at offset ",
             sprintf("0x%x\n", $offset),
             hexdump($nk_header, $offset);
     }
@@ -89,7 +90,7 @@ sub new {
     $self->{_num_values} = $num_values;
     $self->{_offset_to_value_list} = $offset_to_value_list;
 
-    $self->{_timestamp} = decode_win32_filetime($timestamp);
+    $self->{_timestamp} = convert_filetime_to_epoch_time($timestamp);
 
     sysread($regfile, my $name, $name_length);
     if (!defined($name) || length($name) != $name_length) {
@@ -117,49 +118,48 @@ sub get_timestamp {
 sub get_timestamp_as_string {
     my $self = shift;
 
-    return as_iso8601($self->{_timestamp});
+    return iso8601($self->{_timestamp});
+}
+
+sub as_string {
+    my $self = shift;
+
+    return $self->get_path . " [" . $self->get_timestamp_as_string . "]";
 }
 
 sub print_summary {
     my $self = shift;
 
-    print "$self->{_name} ";
-    print "[subkeys=$self->{_num_subkeys}] ";
-    print "[values=$self->{_num_values}] ";
-    print "[", $self->get_timestamp_as_string, "]\n";
+    print $self->as_string, "\n";
 }
 
-sub print_debug {
+sub debugging_info {
     my $self = shift;
 
-    print "$self->{_name} ";
-
-	printf "[nk @ 0x%x] ", $self->{_offset};
-    printf "[t=0x%x] ", $self->{_node_type};
-    printf "[p=0x%x] ", $self->{_offset_to_parent};
-	printf "[k=%d,0x%x] ",
-        $self->{_num_subkeys},
-        $self->{_offset_to_subkey_list};
-	printf "[v=%d,0x%x] ",
-        $self->{_num_values},
-        $self->{_offset_to_value_list};
-    print "[", $self->get_timestamp_as_string, "]\n";
+    my $s = sprintf "%s [nk @ 0x%x] [t=0x%x] [p=0x%x] [k=%d,0x%x] [v=%d,0x%x] [%s]\n",
+        $self->{_name},
+        $self->{_offset},
+        $self->{_node_type},
+        $self->{_offset_to_parent},
+        $self->{_num_subkeys}, $self->{_offset_to_subkey_list},
+        $self->{_num_values}, $self->{_offset_to_value_list},
+        $self->get_timestamp_as_string;
 
     # dump on-disk structures
     if (1) {
         my $regfile = $self->{_regfile};
         sysseek($regfile, $self->{_offset}, 0);
         sysread($regfile, my $buffer, 0x50 + length($self->{_name}));
-        print hexdump($buffer, $self->{_offset});
+        $s .= hexdump($buffer, $self->{_offset});
     }        
 
     # dump offset lists
-    if (1) {
+    if (0) {
         my $regfile = $self->{_regfile};
         my $num_subkeys = $self->{_num_subkeys};
         my $num_values = $self->{_num_values};
         if ($num_subkeys > 0) {
-            print "\tsubkey list:\n";
+            $s .= "\tsubkey list:\n";
             my $offset_to_subkey_list = $self->{_offset_to_subkey_list};
             sysseek($regfile, $offset_to_subkey_list, 0);
             sysread($regfile, my $subkey_list, 8 + 4 * $num_subkeys);
@@ -168,27 +168,29 @@ sub print_debug {
                 sysseek($regfile, $offset_to_subkey_list, 0);
                 sysread($regfile, $subkey_list, 8 + 8 * $num_subkeys);
             }
-            print hexdump($subkey_list, $offset_to_subkey_list);
+            $s .= hexdump($subkey_list, $offset_to_subkey_list);
 
             my $offsets_to_subkeys_ref = $self->get_offsets_to_subkeys;
             foreach my $offset_to_subkey (@{$offsets_to_subkeys_ref}) {
-                printf "\t=> subkey @ 0x%x\n", $offset_to_subkey;
+                $s .= sprintf "\t=> subkey @ 0x%x\n", $offset_to_subkey;
             }
 
         }
         if ($num_values > 0) {
-            print "\tvalue list:\n";
+            $s .= "\tvalue list:\n";
             my $offset_to_value_list = $self->{_offset_to_value_list};
             sysseek($regfile, $offset_to_value_list, 0);
             sysread($regfile, my $buffer, 0x4 + 4 * $num_values);
-            print hexdump($buffer, $offset_to_value_list);
+            $s .= hexdump($buffer, $offset_to_value_list);
 
             my $offsets_to_values_ref = $self->get_offsets_to_values;
             foreach my $offset_to_value (@{$offsets_to_values_ref}) {
-                printf "\t=> value @ 0x%x\n", $offset_to_value;
+                $s .= sprintf "\t=> value @ 0x%x\n", $offset_to_value;
             }
         }
     }
+
+    return $s;
 }
 
 sub get_offsets_to_subkeys {

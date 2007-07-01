@@ -65,12 +65,27 @@ sub get_data_as_string {
         return join(" ", map { $i++; "[$i] $_" } @data);
     }
     elsif ($type == REG_DWORD) {
-        return sprintf "0x%08x", $data;
+        return sprintf "0x%08x (%u)", $data, $data;
     }
     else {
         return join(" ", map { sprintf("%02x", $_) } unpack("C*", $data));
     }
 }
 
-1;
+sub as_string {
+    my $self = shift;
 
+    my $name = $self->get_name;
+    $name = "(Default)" if $name eq "";
+    my $type_as_string = $self->get_type_as_string;
+    my $data_as_string = $self->get_data_as_string;
+    return "$name ($type_as_string) = $data_as_string";
+}
+
+sub print_summary {
+    my $self = shift;
+
+    print $self->as_string, "\n";
+}
+
+1;

@@ -42,11 +42,13 @@ t/winnt_value_tests.rf
 lib/Parse/Win32Registry.pm
 lib/Parse/Win32Registry/Key.pm
 lib/Parse/Win32Registry/Value.pm
-lib/Parse/Win32Registry/Win95.pm
+lib/Parse/Win32Registry/Win95/File.pm
 lib/Parse/Win32Registry/Win95/Key.pm
 lib/Parse/Win32Registry/Win95/Value.pm
-lib/Parse/Win32Registry/WinNT.pm
+lib/Parse/Win32Registry/WinNT/File.pm
 lib/Parse/Win32Registry/WinNT/Key.pm
 lib/Parse/Win32Registry/WinNT/Value.pm
-bin/dumpreg.pl
+bin/regdump.pl
+bin/regfind.pl
+bin/regdiff.pl
 META.yml                                 Module meta-data (added by MakeMaker)

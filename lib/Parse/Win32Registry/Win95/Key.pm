@@ -5,7 +5,7 @@ use warnings;
 
 use base qw(Parse::Win32Registry::Key);
 
-use Parse::Win32Registry qw(as_iso8601 hexdump);
+use Parse::Win32Registry qw(iso8601 hexdump);
 use Parse::Win32Registry::Win95::Value;
 
 use Carp;
@@ -245,6 +245,9 @@ sub _look_up_entry_in_rgdb_block {
     # Reached end of RGDB block without finding matching id
     croak "Could not find RGDB entry for key at offset ",
         sprintf("0x%x\n", $offset);
+        # Can not hexdump RGKN data as we have not stored this
+        # in the key. The data is only 28 bytes, but would it
+        # assist with debugging?
 }
 
 sub get_timestamp {
@@ -252,48 +255,53 @@ sub get_timestamp {
 }
 
 sub get_timestamp_as_string {
-    return as_iso8601(undef);
+    return iso8601(undef);
+}
+
+sub as_string {
+    my $self = shift;
+
+    return $self->get_path;
 }
 
 sub print_summary {
     my $self = shift;
 
-	print "$self->{_name} ";
-	print "[subkeys=?] ";
-	print "[values=$self->{_num_values}]\n";
+    print $self->as_string, "\n";
 }
 
-sub print_debug {
+sub debugging_info {
     my $self = shift;
 
-    print "$self->{_name} ";
-    printf "[rgkn @ 0x%x",
+    my $s = sprintf "%s [rgkn @ 0x%x",
+        $self->{_name},
         $self->{_offset};
     if (defined($self->{_offset_to_rgdb_entry})) {
-        printf ",rgdb @ 0x%x] ", $self->{_offset_to_rgdb_entry};
+        $s .= sprintf ",rgdb @ 0x%x] ", $self->{_offset_to_rgdb_entry};
     }
     else {
-        print ",no rgdb] ";
+        $s .= ",no rgdb] ";
     }
-    printf "[p=0x%x,c=0x%x,n=0x%x] ",
-            $self->{_offset_to_parent},
-            $self->{_offset_to_first_child},
-            $self->{_offset_to_next_sibling};
-    printf "[id=0x%x,0x%x] ", $self->{_rgkn_key_id}, $self->{_rgkn_block_num};
-	print "[k=?] ";
-	print "[v=$self->{_num_values}]\n";
+    $s .= sprintf "[p=0x%x,c=0x%x,n=0x%x] [id=0x%x,bn=0x%x] [v=%d]\n",
+        $self->{_offset_to_parent},
+        $self->{_offset_to_first_child},
+        $self->{_offset_to_next_sibling},
+        $self->{_rgkn_key_id}, $self->{_rgkn_block_num},
+        $self->{_num_values};
 
     # dump on-disk structures
     if (1) {
         sysseek($self->{_regfile}, $self->{_offset}, 0);
         sysread($self->{_regfile}, my $buffer, 28);
-        print hexdump($buffer, $self->{_offset});
+        $s .= hexdump($buffer, $self->{_offset});
         if (defined($self->{_offset_to_rgdb_entry})) {
             sysseek($self->{_regfile}, $self->{_offset_to_rgdb_entry}, 0);
             sysread($self->{_regfile}, $buffer, 0x14 + $self->{_name_length});
-            print hexdump($buffer, $self->{_offset_to_rgdb_entry});
+            $s .= hexdump($buffer, $self->{_offset_to_rgdb_entry});
         }
     }
+
+    return $s;
 }
 
 sub get_list_of_subkeys {

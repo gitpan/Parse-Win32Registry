@@ -98,38 +98,28 @@ sub get_data {
     return $data;
 }
 
-sub print_summary {
+sub debugging_info {
     my $self = shift;
 
-    my $name = $self->get_name || "(Default)";
-    print $name;
-    print " (", $self->get_type_as_string, ") = ";
-    print $self->get_data_as_string;
-    print "\n";
-}
+    my $s = sprintf "%s [rgdb @ 0x%x] ", $self->{_name}, $self->{_offset};
 
-sub print_debug {
-    my $self = shift;
+    $s .= "[type=" . $self->get_type . "] "
+        . "(" . $self->get_type_as_string . ") "
+        . "[len=" . length($self->{_data}) . "] "
+        . $self->get_data_as_string . "\n";
 
-    print $self->{_name} || "(Default)";
-
-    printf " [rgdb @ 0x%x] ", $self->{_offset};
-
-    my $type = $self->get_type;
-    my $type_as_string = $self->get_type_as_string;
-    print "[type=$type] ($type_as_string) ";
-
-    print "= ", $self->get_data_as_string, " ";
-    print "[orig_len=", length($self->{_data}), "]\n";
-
-    print hexdump($self->{_data});
+    if (0) {
+        $s .= hexdump($self->{_data});
+    }
 
     # dump on-disk structure
     if (1) {
         sysseek($self->{_regfile}, $self->{_offset}, 0);
         sysread($self->{_regfile}, my $buffer, $self->{_size_on_disk});
-        print hexdump($buffer, $self->{_offset});
+        $s .= hexdump($buffer, $self->{_offset});
     }
+
+    return $s;
 }
 
 1;

@@ -2,18 +2,18 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-#use Test::More tests => 100;
 
-use Parse::Win32Registry qw(decode_win32_filetime as_iso8601 hexdump);
+use Parse::Win32Registry qw(convert_filetime_to_epoch_time iso8601 hexdump);
+use Time::Local qw(timegm);
 
-die "Incorrect version" if $Parse::Win32Registry::VERSION != '0.25';
+die 'Incorrect version' if $Parse::Win32Registry::VERSION != '0.30';
 
 my @tests = (
-    ["\x80\x83\x61\x67\xb3\xdb\xc5\x01", 1130499203, '2005-10-28T11:33:23Z'],
-    ["\x90\x9f\xae\x87\xbc\xed\xc5\x01", 1132482243, '2005-11-20T10:24:03Z'],
-    ["\x00\x00\x00\x00\xdd\xb1\x9d\x01", undef,      '(undefined)'],
+    ["\x00\x00\x00\x00\x00\x00\x00\x00", undef,      '(undefined)'],
+    #["\x80\xe9\xa5\xd4\xde\xb1\x9d\x01", -1,         '1969-12-31T23:59:59Z'],
+    ["\x80\xe9\xa5\xd4\xde\xb1\x9d\x01", undef,      '(undefined)'],
     ["\x00\x80\x3e\xd5\xde\xb1\x9d\x01", 0,          '1970-01-01T00:00:00Z'],
-    ["\x00\x00\x00\x00\xdf\xb1\x9d\x01", 71,         '1970-01-01T00:01:11Z'],
+    ["\x80\x16\xd7\xd5\xde\xb1\x9d\x01", 1,          '1970-01-01T00:00:01Z'],
     ["\x00\x00\x00\x00\x00\x00\xc1\x01", 993752854,  '2001-06-28T18:27:34Z'],
     ["\x00\x00\x00\x00\x00\x00\xc2\x01", 1021900351, '2002-05-20T13:12:31Z'],
     ["\x00\x00\x00\x00\x00\x00\xc3\x01", 1050047849, '2003-04-11T07:57:29Z'],
@@ -25,25 +25,40 @@ my @tests = (
     ["\x00\x00\x00\x00\x00\x00\xc9\x01", 1218932835, '2008-08-17T00:27:15Z'],
     ["\x00\x00\x00\x00\x00\x00\xca\x01", 1247080333, '2009-07-08T19:12:13Z'],
     ["\x00\x00\x00\x00\x00\x00\xcb\x01", 1275227831, '2010-05-30T13:57:11Z'],
-    ["\x00\x00\x00\x00\x00\x00\x7f\x01", undef,      '(undefined)'],
+    ["\x00\x00\x00\x00\x00\x00\xcc\x01", 1303375328, '2011-04-21T08:42:08Z'],
+    ["\x00\x00\x00\x00\x00\x00\xcd\x01", 1331522826, '2012-03-12T03:27:06Z'],
+    ["\x00\x00\x00\x00\x00\x00\xce\x01", 1359670324, '2013-01-31T22:12:04Z'],
+    ["\x00\x00\x00\x00\x00\x00\xcf\x01", 1387817821, '2013-12-23T16:57:01Z'],
+    ["\x00\x53\x0d\xd4\x1e\xfd\xe9\x01", 2147483646, '2038-01-19T03:14:06Z'],
+    ["\x80\xe9\xa5\xd4\x1e\xfd\xe9\x01", 2147483647, '2038-01-19T03:14:07Z'],
+    #["\x00\x80\x3e\xd5\x1e\xfd\xe9\x01", 2147483648, '2038-01-19T03:14:08Z'],
+    ["\x00\x80\x3e\xd5\x1e\xfd\xe9\x01", 2147483648, '(undefined)'],
+    #["\x00\x00\x00\x00\x00\x00\x00\x02", 2767045207, '2057-09-06T23:40:07Z'],
+    ["\x00\x00\x00\x00\x00\x00\x00\x02", 2767045207, '(undefined)'],
 );
 
 foreach my $test (@tests) {
     my ($packed_filetime, $time, $time_as_string) = @$test;
-    my $decoded_time = decode_win32_filetime($packed_filetime);
+    my $decoded_time = convert_filetime_to_epoch_time($packed_filetime);
+    my $filetime_in_hex = unpack("H*", $packed_filetime);
     if (defined($time)) {
-        cmp_ok($decoded_time, '==', $time, "decode_win32_filetime == $time");
-        is(as_iso8601($decoded_time), $time_as_string, "as_iso8601 eq '$time_as_string'");
+        # The test data time is a Unix epoch time 
+        # so is adjusted to the local OS's epoch time
+        my $epoch_offset = timegm(0, 0, 0, 1, 0, 70);
+        $time += $epoch_offset;
+        cmp_ok($decoded_time, '==', $time,
+            "$filetime_in_hex - convert_filetime_to_epoch_time == $time");
     }
     else {
-        ok(!defined($decoded_time), "decode_win32_filetime == undefined");
-        is(as_iso8601($decoded_time), $time_as_string, "as_iso8601 eq '(undefined)'");
+        ok(!defined($decoded_time),
+            "$filetime_in_hex - convert_filetime_to_epoch_time undefined");
     }
-
+    is(iso8601($decoded_time), $time_as_string, "$filetime_in_hex - and iso8601 eq '$time_as_string'");
 }
 
-is(hexdump(), '', 'empty hexdump');
-
+is(hexdump(), '', 'no hexdump');
+is(hexdump(''), '', 'empty hexdump');
+is(hexdump(undef), '', 'undef hexdump');
 is(hexdump('www.perl.com'), <<EOT, 'small hexdump');
        0  77 77 77 2e  70 65 72 6c  2e 63 6f 6d               www.perl.com
 EOT

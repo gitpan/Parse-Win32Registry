@@ -1,4 +1,4 @@
-package Parse::Win32Registry::WinNT;
+package Parse::Win32Registry::WinNT::File;
 
 use strict;
 use warnings;
@@ -6,7 +6,7 @@ use warnings;
 use Carp;
 use Encode;
 
-use Parse::Win32Registry qw(decode_win32_filetime as_iso8601);
+use Parse::Win32Registry qw(convert_filetime_to_epoch_time iso8601);
 use Parse::Win32Registry::WinNT::Key;
 
 use constant OFFSET_TO_FIRST_HBIN => 0x1000;
@@ -37,11 +37,11 @@ sub new {
             sprintf("0x%x\n", $offset_to_first_key);
     }
 
-    if (substr($nk_header, 4, 4) eq "nk\x2c\x00") {
+    if (substr($nk_header, 4, 2) eq "nk") {
         my $self = {};
         $self->{_regfile} = $regfile;
         $self->{_offset_to_root_key} = $offset_to_first_key;
-        $self->{_timestamp} = decode_win32_filetime($timestamp);
+        $self->{_timestamp} = convert_filetime_to_epoch_time($timestamp);
         bless $self, $class;
         return $self;
     }
@@ -71,7 +71,7 @@ sub get_timestamp {
 sub get_timestamp_as_string {
     my $self = shift;
 
-    return as_iso8601($self->{_timestamp});
+    return iso8601($self->{_timestamp});
 }
 
 sub dump_file {
@@ -88,7 +88,7 @@ sub dump_file {
 
     my ($sig, $timestamp) = unpack("a4x8a8", $regf_header);
     print "File signature = '$sig'\n";
-    print "Timestamp = ", as_iso8601(decode_win32_filetime($timestamp)), "\n";
+    print "Timestamp = ", iso8601(convert_filetime_to_epoch_time($timestamp)), "\n";
 
     sysread($regfile, my $embedded_filename, 0x40);
     if (!defined($embedded_filename) || length($embedded_filename) != 0x40) {
@@ -139,33 +139,35 @@ sub dump_file {
 
             my ($size, $sig) = unpack("Va2", $header);
 
-            my $sign = "positive";
+            my $sign = "+";
             if ($size > 0x7fffffff) {
-                $sign = "negative";
+                $sign = "-";
                 $size = (0xffffffff - $size) + 1;
             }
 
+            my $hex_sig = unpack("v", $sig);
+
             print "  ";
             if ($sig eq "nk") {
-                printf "%s @ 0x%x size=0x%x, %s\n",
-                    $sig, $offset, $size, $sign;
+                printf "0x%04x '%s' @ 0x%x size=0x%x, %s\n",
+                    $hex_sig, $sig, $offset, $size, $sign;
             }
             elsif ($sig eq "vk") {
-                printf "%s @ 0x%x size=0x%x, %s\n",
-                    $sig, $offset, $size, $sign;
+                printf "0x%04x '%s' @ 0x%x size=0x%x, %s\n",
+                    $hex_sig, $sig, $offset, $size, $sign;
             }
             elsif ($sig eq "lh" || $sig eq "lf"
                 || $sig eq "li" || $sig eq "ri") {
-                printf "%s @ 0x%x size=0x%x, %s\n",
-                    $sig, $offset, $size, $sign;
+                printf "0x%04x '%s' @ 0x%x size=0x%x, %s\n",
+                    $hex_sig, $sig, $offset, $size, $sign;
             }
             elsif ($sig eq "sk") {
-                printf "%s @ 0x%x size=0x%x, %s\n",
-                    $sig, $offset, $size, $sign;
+                printf "0x%04x '%s' @ 0x%x size=0x%x, %s\n",
+                    $hex_sig, $sig, $offset, $size, $sign;
             }
             else {
-                printf "%s @ 0x%x size=0x%x, %s\n",
-                    '??', $offset, $size, $sign;
+                printf "0x%04x '..' @ 0x%x size=0x%x, %s\n",
+                    $hex_sig, $offset, $size, $sign;
             }
 
             last if $size == 0;

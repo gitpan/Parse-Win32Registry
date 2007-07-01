@@ -151,51 +151,42 @@ sub get_data {
     return $data;
 }
 
-sub print_summary {
+sub debugging_info {
     my $self = shift;
 
-    my $name = $self->get_name || "(Default)";
-    print $name;
-    print " (", $self->get_type_as_string, ") = ";
-    print $self->get_data_as_string;
-    print "\n";
-}
+    my $s = sprintf "%s [vk @ 0x%x,", $self->{_name}, $self->{_offset};
 
-sub print_debug {
-    my $self = shift;
-
-    print $self->{_name} || "(Default)";
-
-    printf " [vk @ 0x%x,", $self->{_offset};
     if ($self->{_data_inline}) {
-        print "data inline";
+        $s .= "data inline";
     }
     else {
-        printf "data @ 0x%x", $self->{_offset_to_data};
+        $s .= sprintf "data @ 0x%x", $self->{_offset_to_data};
     }
-    print "] ";
+    $s .= "] ";
 
-    my $type = $self->get_type;
-    my $type_as_string = $self->get_type_as_string;
-    print "[type=$type] ($type_as_string) ";
+    $s .= "[type=" . $self->get_type . "] "
+        . "(" . $self->get_type_as_string . ") "
+        . "[len=" . length($self->{_data}) . "] "
+        . $self->get_data_as_string . "\n";
 
-    print "= ", $self->get_data_as_string, " ";
-    print "[orig_len=", length($self->{_data}), "]\n";
-
-    print hexdump($self->{_data});
+    if (0) {
+        $s .= hexdump($self->{_data});
+    }
 
     # dump on-disk structures
     if (1) {
         my $regfile = $self->{_regfile};
         sysseek($regfile, $self->{_offset}, 0);
         sysread($regfile, my $buffer, 0x18 + length($self->{_name}));
-        print hexdump($buffer, $self->{_offset});
+        $s .= hexdump($buffer, $self->{_offset});
         if (!$self->{_data_inline}) {
             sysseek($regfile, $self->{_offset_to_data}, 0);
             sysread($regfile, my $buffer, 0x4 + length($self->{_data}));
-            print hexdump($buffer, $self->{_offset_to_data});
+            $s .= hexdump($buffer, $self->{_offset_to_data});
         }
     }        
+
+    return $s;
 }
 
 1;

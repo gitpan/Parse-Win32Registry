@@ -1,9 +1,9 @@
-package Parse::Win32Registry::Win95;
+package Parse::Win32Registry::Win95::File;
 
 use strict;
 use warnings;
 
-use Parse::Win32Registry qw(as_iso8601);
+use Parse::Win32Registry qw(iso8601);
 use Parse::Win32Registry::Win95::Key;
 
 use Carp;
@@ -82,7 +82,7 @@ sub get_timestamp {
 }
 
 sub get_timestamp_as_string {
-    return as_iso8601(undef);
+    return iso8601(undef);
 }
 
 sub dump_file {
@@ -147,8 +147,7 @@ sub dump_file {
             if $offset_to_next_sibling != 0xffffffff;
 
         printf "rgkn key @ 0x%x ", $offset_to_rgkn_entry;
-        printf "h=0x%x,p=0x%x,c=0x%x,n=0x%x,i=0x%x,b=0x%x\n",
-            $hash,
+        printf "p=0x%x,c=0x%x,n=0x%x id=0x%x,bn=0x%x\n",
             $offset_to_parent,
             $offset_to_first_child,
             $offset_to_next_sibling,

@@ -38,16 +38,24 @@ sub _lookup_subkey {
 sub get_subkey {
     my $self = shift;
     my $subkey_path = shift;
+    
+    if (!defined($subkey_path)) {
+        croak "No subkey name specified";
+    }
 
     my $key = $self;
 
-    # current path component separator is '\' to match that used in Windows
-    my @path_components = split(/\\/, $subkey_path);
+    # Current path component separator is '\' to match that used in Windows.
+    # split returns nothing if it is given an empty string,
+    # and without a limit of -1 drops trailing empty fields.
+    my @path_components = index($subkey_path, "\\") == -1
+                        ? ($subkey_path)
+                        : split(/\\/, $subkey_path, -1);
     foreach my $component (@path_components) {
         if (my $subkey = $key->_lookup_subkey($component)) {
             $key = $subkey;
         }
-        else {
+        else { # we can stop looking
             return;
         }
     }
