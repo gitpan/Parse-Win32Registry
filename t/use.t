@@ -5,8 +5,11 @@ use Test::More 'no_plan';
 
 BEGIN { use_ok('Parse::Win32Registry') };
 
-is($Parse::Win32Registry::VERSION, '0.30', 'correct version');
+is($Parse::Win32Registry::VERSION, '0.40', 'correct version');
 can_ok('Parse::Win32Registry', 'new');
 can_ok('Parse::Win32Registry', 'convert_filetime_to_epoch_time');
 can_ok('Parse::Win32Registry', 'iso8601');
 can_ok('Parse::Win32Registry', 'hexdump');
+can_ok('Parse::Win32Registry', 'unpack_string');
+can_ok('Parse::Win32Registry', 'unpack_unicode_string');
+can_ok('Parse::Win32Registry', 'unpack_windows_time');

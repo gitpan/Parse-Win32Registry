@@ -1,5 +1,42 @@
 Revision history for Perl extension Parse::Win32Registry.
 
+** 0.40 2008-09-28
+
+Added new scripts: regexport.pl for exporting keys and values using
+the Windows Registry Editor Version 5.00 format, regscan.pl for
+dumping all the entries in a registry file, regstats.pl for providing
+basic statistics, regtimeline.pl for listing keys and values in date
+order, regtree.pl for dumping a registry file as an intended tree, and
+regview.pl, a GTK+ Registry Viewer. Updated regdump.pl and regfind.pl
+to provide new options.
+
+Changed parse errors to generate warnings instead of croaking.
+Documented this in the Handling Invalid Data section.
+
+The get_data method of Value objects now handles REG_MULTI_SZ data by
+returning a list of its elements in an array context, and a string in
+a scalar context. The output of get_data_as_string is unaffected.
+
+Added new Registry object methods: get_virtual_root_key,
+get_timestamp, get_timestamp_as_string, and get_embedded_filename.
+
+Added new Key object methods: as_regedit_export, get_parent, and
+is_root.
+
+Added new Value object methods: as_regedit_export, and get_raw_data.
+
+Added the get_next_entry and move_to_first_entry methods to the
+Registry object for iterating through all the entries in a registry
+file. Added the Entry object class as a generic object to represent
+these entries.
+
+Added the methods parse_info and as_hexdump to
+Entry, Key, and Value objects.
+
+Support function convert_filetime_to_epoch_time renamed to
+unpack_windows_time, added the function unpack_unicode_string, and
+documented hexdump.
+
 ** 0.30 2007-07-01
 
 Added two new scripts: regfind.pl for searching keys, values, and data
@@ -18,19 +55,13 @@ REG_DWORD values are returned as unsigned integers.
 Support functions convert_filetime_to_epoch_time and iso8601
 documented.
 
-Fixed bugs in the handling of unusual names in the get_subkey method.
-
-Synopsis overhauled.
+Fixed bugs handling unusual key names in the get_subkey method.
 
 ** 0.25 2006-11-12
 
 Fixed a bug with new WinNT key objects incorrectly setting the offsets
 to subkey lists and value lists when the offset to the parent key had
-a particular value. Test data for Windows NT registry keys updated with
-parent key offsets that would trigger the bug.
-
-Internally, the path to a key is now stored as a list instead of a
-string.
+a particular value.
 
 ** 0.24 2006-10-29
 
@@ -38,14 +69,9 @@ Key objects now have a get_path method, which returns the path
 to that key from the root key of a registry file. Documentation
 updated to describe the new method.
 
-dumpreg.pl updated to use get_path. The prefix_pattern and
-long_prefix_pattern configuration options from Getopt::Long
-have been dropped.
-
-The node type check for Windows NT registry keys now accepts 0x00
-in addition to 0x20 and 0x2c.
-
-Tests updated to check paths for keys.
+dumpreg.pl updated to use get_path. Dropped the prefix_pattern and
+long_prefix_pattern configuration options from Getopt::Long.
+(which required an unnecessarily recent version of Getopt::Long)
 
 ** 0.23 2006-08-13
 
@@ -54,55 +80,36 @@ methods, although only Windows NT registry keys will return valid
 values. print_summary nows also displays the timestamp for Windows NT
 registry keys. Documentation updated to reflect this.
 
-Tests for the support functions added decode_win32_filetime,
-as_iso8601, and hexdump added. Updated the key tests to check
-timestamps.
-
-Makefile.pl now installs the dumpreg.pl script.
+Makefile.PL now installs the dumpreg.pl script.
 
 ** 0.22 2006-08-06
 
 Included the script dumpreg.pl as both a tool for examining
 registry files, and as an example.
 
-print_summary now displays 'subkeys' instead of 'keys' to make it
-clear what it was referring to.
-
 Offsets that require adjustment by fixed amounts (this applies to
 entries in the RGKN block of Windows 95 registry files and to all
 entries in the hbin blocks of Windows NT registry files) are now
 amended before being stored, rather than at seek time.
 
-More comprehensive tests have been added.
-
 Troubleshooting section added to the documentation.
 
 ** 0.21 2006-07-30
 
-Checks added after every sysread, and an attempt made to improve the
+Checks added after every sysread, and improvements attempted for the
 error messages presented. Internal error messages have been made
-distinct from errors generated when parsing invalid data.
+distinct from parse errors.
 
 The code that looks up the RGDB entry for Win95 keys has been revised
 to remove some duplicate code. It's still too long.
 
-The use of substr and unpack when parsing new NT keys and values
-has been reduced.
-
 Reading REG_DWORD values which are not the expected four bytes in
-length no longer results in an exception. Similarly, get_data now
+length no longer results in an exception. get_data now
 returns undef for these values instead of failing.
 
 get_data_as_string updated to return (no data) when get_data returns
 an empty string, and (invalid data) when get_data returns undef (which
 should only occur for invalid REG_DWORD values).
-
-The undocumented print_debug methods have been updated and added to.
-Win95 keys and values could already dump their on-disk structures; now
-WinNT keys and values can dump their on-disk structures, and WinNT
-keys can dump their offset lists.
-
-Registry files are now opened using the three-argument version of open.
 
 ** 0.20 2006-07-23
 

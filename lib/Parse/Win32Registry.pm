@@ -3,14 +3,24 @@ package Parse::Win32Registry;
 use strict;
 use warnings;
 
-our $VERSION = '0.30';
+our $VERSION = '0.40';
 
 use base qw(Exporter);
+
+use Carp;
+use Encode;
+use Parse::Win32Registry::Base qw(:all);
+use Parse::Win32Registry::Win95::File;
+use Parse::Win32Registry::WinNT::File;
 
 our @EXPORT_OK = qw(
     convert_filetime_to_epoch_time
     iso8601
     hexdump
+    unpack_string
+    unpack_unicode_string
+    unpack_windows_time
+    formatted_octets
     REG_NONE
     REG_SZ
     REG_EXPAND_SZ
@@ -24,6 +34,7 @@ our @EXPORT_OK = qw(
     REG_RESOURCE_REQUIREMENTS_LIST
     REG_QWORD
 );
+
 our %EXPORT_TAGS = (
     REG_ => [qw(
         REG_NONE
@@ -41,24 +52,15 @@ our %EXPORT_TAGS = (
     )],
 );
 
-use constant REG_NONE => 0;
-use constant REG_SZ => 1;
-use constant REG_EXPAND_SZ => 2;
-use constant REG_BINARY => 3;
-use constant REG_DWORD => 4;
-use constant REG_DWORD_BIG_ENDIAN => 5;
-use constant REG_LINK => 6;
-use constant REG_MULTI_SZ => 7;
-use constant REG_RESOURCE_LIST => 8;
-use constant REG_FULL_RESOURCE_DESCRIPTOR => 9;
-use constant REG_RESOURCE_REQUIREMENTS_LIST => 10;
-use constant REG_QWORD => 11;
+*convert_filetime_to_epoch_time = \&Parse::Win32Registry::unpack_windows_time;
 
-use Carp;
-use Time::Local qw(timegm);
+sub enable_warnings {
+    $Parse::Win32Registry::Base::WARNINGS = 1;
+}
 
-require Parse::Win32Registry::Win95::File;
-require Parse::Win32Registry::WinNT::File;
+sub disable_warnings {
+    $Parse::Win32Registry::Base::WARNINGS = 0;
+}
 
 sub new {
     my $class = shift;
@@ -67,7 +69,8 @@ sub new {
     open my $regfile, "<", $filename or croak "Unable to open '$filename': $!";
     sysread($regfile, my $sig, 4);
     if (!defined($sig) || length($sig) != 4) {
-        croak "Could not read registry file header\n";
+        log_error("Could not read registry file header");
+        return;
     }
     close $regfile;
 
@@ -80,89 +83,9 @@ sub new {
         return Parse::Win32Registry::WinNT::File->new($filename);
     }
     else {
-        croak "Not a registry file\n";
+        log_error("Invalid registry file header");
+        return;
     }
-}
-
-# Thanks to Dan Sully's Audio::WMA for the _fileTimeToUnixTime function
-# which was the original basis for this
-sub convert_filetime_to_epoch_time {
-    my $packed_filetime = shift;
-
-    croak "Invalid filetime size (should be 8 bytes)"
-        if length($packed_filetime) < 8;
-
-	my ($low, $high) = unpack('VV', $packed_filetime);
-	my $filetime = $high * 2 ** 32 + $low;
-    my $epoch_time = int(($filetime - 116444736000000000) / 10000000);
-
-    # adjust the UNIX epoch time to the local OS's epoch time
-    # (see perlport's Time and Date section)
-    my $epoch_offset = timegm(0, 0, 0, 1, 0, 70);
-    $epoch_time += $epoch_offset;
-
-    if ($epoch_time < 0) {
-        $epoch_time = undef;
-    }
-
-    return $epoch_time;
-}
-
-sub iso8601 {
-    my $time = shift;
-
-    # check if we have been passed undef (i.e. an invalid date)
-    if (!defined($time)) {
-        return "(undefined)";
-    }
-
-    # On Windows, gmtime will return undef if $time < 0 or > 0x7fffffff
-    if ($time < 0 || $time > 0x7fffffff) {
-        return "(undefined)";
-    }
-    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday) = gmtime $time;
-
-    # The final 'Z' indicates UTC ("zero meridian")
-    return sprintf "%04d-%02d-%02dT%02d:%02d:%02dZ",
-        1900+$year, 1+$mon, $mday, $hour, $min, $sec;
-}
-
-sub hexdump {
-    my $data = shift;
-    my $pos = shift || 0; # adjust the display relative to pos
-
-    return "" if !defined($data);
-
-    my $output = "";
-
-    for (my $i = 0; $i < length($data); $i += 16) {
-        $output .= sprintf "%8x  ", $i + $pos;
-
-        my $row_length = 16;
-        $row_length = length($data) - $i if $i + 16 > length($data);
-        for (my $j = 0; $j < $row_length; $j++) {
-            my $ch = substr($data, $i + $j, 1);
-            $output .= sprintf "%02x ", ord $ch;
-            if ($j % 4 == 3) { $output .= " "; } # dword gaps
-        }
-        for (my $j = $row_length; $j < 16; $j++) {
-            $output .= "   ";
-            if ($j % 4 == 3) { $output .= " "; } # dword gaps
-        }
-
-        for (my $j = 0; $j < $row_length; $j++) {
-            my $ch = substr($data, $i + $j, 1);
-
-            if (ord $ch >= 32 && ord $ch <= 126) {
-                $output .= "$ch";
-            } else {
-                $output .= ".";
-            }
-        }
-
-        $output .= "\n"; # end of row
-    }
-    return $output;
 }
 
 1;
@@ -176,12 +99,19 @@ Parse::Win32Registry - Parse Windows Registry Files
 =head1 SYNOPSIS
 
     use strict;
-    use Parse::Win32Registry qw(:REG_);
+    use Parse::Win32Registry qw( :REG_
+                                 unpack_windows_time
+                                 unpack_unicode_string );
 
     my $filename = shift or die "Filename?";
 
-    my $registry = Parse::Win32Registry->new($filename);
-    my $root_key = $registry->get_root_key;
+    my $registry = Parse::Win32Registry->new($filename)
+        or die "'$filename' is not a registry file\n";
+    my $root_key = $registry->get_root_key
+        or die "Could not get root key of '$filename'\n";
+
+    # Code robustly by assuming that get_subkey or get_value
+    # might return nothing
 
     # The following code works on USER.DAT or NTUSER.DAT files
 
@@ -190,27 +120,32 @@ Parse::Win32Registry - Parse Windows Registry Files
 
     if (defined($software_key)) {
         my @user_key_names = (
-            "Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders",
-            "Microsoft\\Windows\\CurrentVersion\\Run",
-            "Microsoft\\Internet Explorer",
-            "Microsoft\\Internet Explorer\\Main",
+          "Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders",
+          "Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU",
         );
 
-        print_list_of_keys($software_key, @user_key_names);
+        foreach my $name (@user_key_names) {
+            if (my $key = $software_key->get_subkey($name)) {
+                print "\n", $key->as_string, "\n";
+                foreach my $value ($key->get_list_of_values) {
+                    print $value->as_string, "\n";
+                }
+            }
+        }
 
-        # This demonstrates how to use the decode function from the
-        # Encode module to convert binary data into a Unicode string.
-        # Encode has been in the Perl standard library since 5.8.
-        use Encode;
-        foreach my $version (qw(8.0 9.0 10.0 11.0)) {
-            my $key_name = "Microsoft\\Office\\$version\\Common\\UserInfo";
-            if (my $userinfo_key = $software_key->get_subkey($key_name)) {
-                print "\n", $userinfo_key->as_string, "\n";
-                foreach my $value_name ("UserName", "UserInitials", "Company") {
-                    if (my $value = $userinfo_key->get_value($value_name)) {
+        # This demonstrates how you can deal with a binary value
+        # that contains a Unicode string
+        foreach my $ver (qw(8.0 9.0 10.0 11.0)) {
+            my $key_name = "Microsoft\\Office\\$ver\\Common\\UserInfo";
+            if (my $key = $software_key->get_subkey($key_name)) {
+                print "\n", $key->as_string, "\n";
+                my @value_names = qw(UserName UserInitials Company);
+                foreach my $value_name (@value_names) {
+                    if (my $value = $key->get_value($value_name)) {
                         print $value->as_string, "\n";
-                        my $data = decode("UCS-2LE", $value->get_data);
-                        print "$value_name is the unicode string '$data'\n";
+                        my $data = $value->get_data;
+                        my $string = unpack_unicode_string($data);
+                        print "$value_name = '$string'\n";
                     }
                 }
             }
@@ -225,24 +160,29 @@ Parse::Win32Registry - Parse Windows Registry Files
         my @software_key_names = (
             "Microsoft\\Windows\\CurrentVersion",
             "Microsoft\\Windows NT\\CurrentVersion",
-            "Microsoft\\Windows\\CurrentVersion\\Run",
-            "Microsoft\\Windows\\CurrentVersion\\RunOnce",
-            "Microsoft\\Windows\\CurrentVersion\\RunOnceEx",
-            "Microsoft\\Internet Explorer",
         );
 
-        print_list_of_keys($software_key, @software_key_names);
+        foreach my $name (@software_key_names) {
+            if (my $key = $software_key->get_subkey($name)) {
+                print "\n", $key->as_string, "\n";
+                foreach my $value ($key->get_list_of_values) {
+                    print $value->as_string, "\n";
+                }
+            }
+        }
 
         # This demonstrates how you can deal with a Unix date
         # found in a registry value
         my $key_name = "Microsoft\\Windows NT\\CurrentVersion";
-        if (my $currentversion_key = $software_key->get_subkey($key_name)) {
-            print "\n", $currentversion_key->as_string, "\n";
-            if (my $value = $currentversion_key->get_value("InstallDate")) {
+        if (my $curver_key = $software_key->get_subkey($key_name)) {
+            print "\n", $curver_key->as_string, "\n";
+            if (my $value = $curver_key->get_value("InstallDate")) {
                 print $value->as_string, "\n";
-                my $data = $value->get_data;
-                print "InstallDate was ", scalar gmtime $data, " GMT\n";
-                print "InstallDate was ", scalar localtime $data, " Local\n";
+                my $time = $value->get_data;
+                print "InstallDate = ",
+                    scalar gmtime $time, " GMT\n";
+                print "InstallDate = ",
+                    scalar localtime $time, " Local\n";
             }
         }
     }
@@ -254,7 +194,7 @@ Parse::Win32Registry - Parse Windows Registry Files
     my $ccs_name = "CurrentControlSet"; # default for Win95
     if (my $key = $system_key->get_subkey("Select")) {
         my $current_value = $key->get_value("Current");
-        $ccs_name = "ControlSet00" . $current_value->get_data;
+        $ccs_name = sprintf("ControlSet%03d", $current_value->get_data);
         print "CurrentControlSet = $ccs_name\n";
     }
 
@@ -266,20 +206,28 @@ Parse::Win32Registry - Parse Windows Registry Files
             "Control\\TimeZoneInformation",
         );
 
-        print_list_of_keys($ccs_key, @system_key_names);
-    }
-
-    # Given a starting key object and a list of subkey names
-    # relative to the starting key, this function will print
-    # out each subkey and its values
-    sub print_list_of_keys {
-        my ($start_key, @key_names) = @_;
-        foreach my $key_name (@key_names) {
-            if (my $key = $start_key->get_subkey($key_name)) {
+        foreach my $name (@system_key_names) {
+            if (my $key = $ccs_key->get_subkey($name)) {
                 print "\n", $key->as_string, "\n";
                 foreach my $value ($key->get_list_of_values) {
                     print $value->as_string, "\n";
                 }
+            }
+        }
+
+        # This demonstrates how you can deal with a Windows date
+        # found in a registry value
+        my $key_name = "Control\\Windows";
+        if (my $windows_key = $ccs_key->get_subkey($key_name)) {
+            print "\n", $windows_key->as_string, "\n";
+            if (my $value = $windows_key->get_value("ShutdownTime")) {
+                print $value->as_string, "\n";
+                my $data = $value->get_data;
+                my $time = unpack_windows_time($data);
+                print "ShutdownTime = ",
+                    scalar gmtime $time, " GMT\n";
+                print "ShutdownTime = ",
+                    scalar localtime $time, " Local\n";
             }
         }
     }
@@ -297,7 +245,8 @@ with each key containing further subkeys or values.
 The module is intended to be cross-platform, and run on those platforms
 where Perl will run.
 
-It supports both Windows NT registry files (Windows NT, 2000, XP, 2003)
+It supports both
+Windows NT registry files (Windows NT, 2000, XP, 2003, Vista)
 and Windows 95 registry files (Windows 95, 98, and Millennium Edition).
 
 =head1 METHODS
@@ -311,26 +260,80 @@ that comprise the registry file using the methods described below.
 
 Data is read directly from a registry file when a Key or Value object
 is created, and discarded when the Key or Value object is destroyed.
-This avoids any delay in parsing an entire registry file
-before any Key or Value object is instantiated as it is anticipated that
-generally code will only be extracting a subset of the keys and values
-contained in a registry file.
+This avoids any delay in parsing an entire registry file to obtain a
+Key or Value object as it is expected that most code will only be
+extracting a subset of the keys and values contained in a registry
+file.
 
 =head2 Registry Object Methods
 
 =over 4
 
-=item $registry = Parse::Win32Registry->new( 'filename' );
+=item $registry = Parse::Win32Registry->new( 'filename' )
 
 Creates a new Registry object for the specified registry file.
 
-=item $root_key = $registry->get_root_key;
+=item $registry->get_root_key
 
 Returns the root Key object of the registry file.
 
 The root key of a registry file is not the same as one of the virtual
 roots of the registry (HKEY_LOCAL_MACHINE, HKEY_USERS, etc) that you
 may be familiar with from using tools such as REGEDIT.
+
+The names of root keys vary by operating system and by file.
+For example, the name of the root key of a Windows XP NTUSER.DAT file
+is '$$$PROTO.HIV' and the name of the root key of a Windows 98
+USER.DAT file is the empty string ''.
+
+=item $registry->get_virtual_root_key
+
+=item $registry->get_virtual_root_key( 'virtual root key name' )
+
+Returns the virtual root Key object of the registry file.
+
+In all respects this is exactly the same as the root Key object,
+except that it pretends to be a virtual root by simply faking its name.
+It guesses the virtual root key name
+by looking at the filename of the registry file.
+For example, if the filename contains 'SYSTEM'
+the virtual root key will be named 'HKEY_LOCAL_MACHINE\\SYSTEM'.
+If the guess fails (because the filename is not recognised)
+the virtual root key will be named 'HKEY_UNKNOWN'.
+
+You can override the guess by supplying your own root key name.
+You can use this to pass in your preferred root key name.
+For example, you could pass the filename of the registry file in as
+the virtual root key name, which would then cause the filename to
+appear as part of each key's path.
+
+=item $registry->get_timestamp
+
+Returns the embedded timestamp for the registry file as a time value
+(the number of seconds since your computer's epoch)
+suitable for passing to gmtime or localtime.
+
+Only Windows NT registry files have an embedded timestamp.
+
+Returns nothing if the date is out of range
+or if called on a Windows 95 registry file
+
+=item $registry->get_timestamp_as_string
+
+Returns the timestamp as a ISO 8601 string,
+for example, '2010-05-30T13:57:11Z'.
+The Z indicates that the time is GMT ('Zero Meridian').
+
+Returns the string '(undefined)' if the date is out of range
+or if called on a Windows 95 registry file.
+
+=item $registry->get_embedded_filename
+
+Returns the embedded filename for the registry file.
+
+Only Windows NT registry files have an embedded filename.
+
+Returns nothing if called on a Windows 95 registry file
 
 =back
 
@@ -346,8 +349,9 @@ string.
 
 =item $key->get_path
 
-Returns the path to the key. This is relative to the root key of the
-registry file, not a virtual root such as HKEY_LOCAL_MACHINE.
+Returns the path to the key. This shows the all of the keys
+from the root key to the current key, 
+joined by the path separator '\\'.
 
 =item $key->get_subkey( 'key name' )
 
@@ -357,9 +361,11 @@ If a key with that name does not exist, nothing will be returned.
 You can specify a path to a subkey by separating keys
 using the path separator '\\'. For example:
 
-    $key->get_subkey( 'Software\\Microsoft\\Windows' )
+    $key->get_subkey('Software\\Microsoft\\Windows')
 
 A path is always relative to the current key.
+It should start with the name of the first subkey in the path,
+not the current key.
 If any key in the path does not exist, nothing will be returned.
 
 =item $key->get_value( 'value name' )
@@ -402,9 +408,29 @@ or if called on a Windows 95 registry key.
 Returns the path of the key as a string.
 The timestamp will be appended for Windows NT registry keys.
 
+=item $key->as_regedit_export
+
+Returns the path of the key as a string
+in the Windows Registry Editor Version 5.00 export format.
+
+If used in conjunction with the get_virtual_root_key method
+of Registry objects this should generate key paths
+interoperable with those exported by REGEDIT.
+
 =item $key->print_summary
 
 Prints $key->as_string to standard output.
+
+=item $key->get_parent
+
+Returns a Key object for parent of the current key.
+If the key does not have a valid parent key
+(which will normally only occur for the root key)
+nothing will be returned.
+
+=item $key->is_root
+
+Returns true if this key is the root key.
 
 =back
 
@@ -421,7 +447,8 @@ This is returned as an empty string.
 
 =item $value->get_type
 
-Returns the integer representing the type of the data.
+Returns the integer representing the type of the value
+(where 1 is a REG_SZ, 2 is a REG_EXPAND_SZ, etc).
 The constants for the value types can be imported from
 the Parse::Win32Registry module with
 
@@ -429,26 +456,39 @@ the Parse::Win32Registry module with
 
 =item $value->get_type_as_string
 
-Returns the type of the data as a string instead of an integer constant,
+Returns the type of the value as a string instead of an integer constant,
 making it more suitable for printed output.
 
 =item $value->get_data
 
 Returns the data for the value.
 
-REG_SZ, REG_EXPAND_SZ, and REG_MULTI_SZ values will
-be returned as strings.
-The string data will be converted from Unicode (UCS-2LE) for Windows
+REG_SZ and REG_EXPAND_SZ values will be returned as strings.
+String data will be converted from Unicode (UCS-2LE) for Windows
 NT based registry files.
-Any terminating null characters will be removed from REG_SZ and
-REG_EXPAND_SZ values.
-To extract the component strings of a REG_MULTI_SZ value, you will need to
-use the built-in split function to separate on null characters.
+Any terminating null characters will be removed.
+
+REG_MULTI_SZ values will be returned as a list of strings when called
+in an array context, and as a string with each element separated by
+the list separator $" when called in a scalar context.
+The list separator defaults to the space character.
+String data will be converted from Unicode (UCS-2LE) for Windows
+NT based registry files.
+
+    # get REG_MULTI_SZ data as a string
+    my $data = $multi_sz_value->get_data;
+
+    # get REG_MULTI_SZ data as a list
+    my @data = $multi_sz_value->get_data;
 
 REG_DWORD values are unpacked and returned as unsigned integers.
-undef will be returned for REG_DWORD values that contain invalid data.
 
 All other types are returned as packed binary strings.
+To extract data from these packed binary strings,
+you will need to use Perl's unpack function,
+or one of the provided support functions.
+
+Nothing will be returned if the data is invalid.
 
 =item $value->get_data_as_string
 
@@ -467,12 +507,34 @@ instead of the undef returned by get_data.
 
 '(no data)' will be returned if get_data returns an empty string.
 
+=item $value->get_raw_data
+
+Returns the data for a value exactly as it was read from the registry,
+without the processing normally performed by get_data.
+
+It is intended for those rare occasions
+when you need to access binary data that has been
+inappropriately stored in 
+a REG_SZ, REG_EXPAND_SZ, REG_MULTI_SZ, or REG_DWORD value.
+
 =item $value->as_string
 
 Returns the name, type, and data for the value as a string,
 safe for printed output.
 
-'(Default)' will be displayed for those values that do not have names.
+'(Default)' will be used for the names of
+those values that do not have names.
+
+=item $value->as_regedit_export
+
+Returns the name, type, and data for the value as a string,
+in the Windows Registry Editor Version 5.00 export format.
+
+'@' will be used for the names of 
+those values that do not have names.
+
+This should generate values
+interoperable with those exported by REGEDIT.
 
 =item $value->print_summary
 
@@ -503,14 +565,18 @@ The :REG_ tag exports all of the following constants:
     REG_RESOURCE_REQUIREMENTS_LIST
     REG_QWORD
 
+You can import individual types by specifying them, for example:
+
+    use Parse::Win32Registry qw( REG_SZ REG_DWORD );
+
 =head2 Support Functions
 
 Parse::Win32Registry will export the following support functions
-on request:
+on request.
 
 =over 4
 
-=item convert_filetime_to_epoch_time( $packed_filetime )
+=item unpack_windows_time( $filetime )
 
 Returns the epoch time for the given Win32 FILETIME.
 A Win32 FILETIME is a 64-bit integer
@@ -521,6 +587,10 @@ It should be passed as 8 bytes of packed binary data.
 undef will be returned if the date is earlier than your computer's epoch.
 The epoch begins at January 1st, 1970 on Unix and Windows machines.
 
+(To avoid changing any existing scripts,
+this function can also be called by its previous name of
+convert_filetime_to_epoch_time.)
+
 =item iso8601( $epoch_time )
 
 Returns the ISO8601 string for the given $epoch_time,
@@ -528,36 +598,224 @@ for example, '2010-05-30T13:57:11Z'.
 
 The string '(undefined)' will be returned if the epoch time is out of range.
 
-=back
-
-For example, if 'UpdateTime' is a REG_BINARY value that contains
-a Win32 FILETIME, you can extract and convert it as follows:
-
-    use Parse::Win32Registry qw( convert_filetime_to_epoch_time iso8601 );
+    use Parse::Win32Registry qw( unpack_windows_time iso8601 );
 
     ...
     
-    if (my $value = $key->get_value('UpdateTime')) {
-        my $data = $value->get_data;
-        my $update_time = convert_filetime_to_epoch_time($data);
-        my $update_time_as_string = iso8601($update_time);
-        print "UpdateTime = $update_time_as_string\n";
+    my $data = $value->get_data;
+
+    # extract the Win32 FILETIME found at the start of the data
+    my $time = unpack_windows_time($data);
+    my $time_as_string = iso8601($time);
+    print "$time_as_string\n";
+
+=item unpack_unicode_string( $data )
+
+Extracts a Unicode (UCS-2LE) string from the given binary data.
+Any terminating null characters are dropped. 
+Unicode (UCS-2LE) strings are sometimes encountered
+in Windows NT registry REG_BINARY values.
+
+Note that REG_SZ, REG_EXPAND_SZ, and REG_MULTI_SZ values
+do not need any special handling
+as they are automatically decoded
+by the get_data method of a Value object.
+
+In a scalar context, it will return the first Unicode string found.
+In an array context, it will return all of the Unicode strings
+found in the data.
+
+    use Parse::Win32Registry qw( unpack_unicode_string );
+
+    ...
+    
+    my $data = $value->get_data;
+
+    # extract the unicode string at the start of the data
+    my $string = unpack_unicode_string($data);
+    print "$string\n";
+
+=item hexdump( $data )
+
+Returns a string containing a hex dump
+of the supplied data in rows of 16 bytes.
+
+=back
+
+=head1 HANDLING INVALID DATA
+
+Since version 0.40 the Parse::Win32Registry library generates
+warnings to indicate errors with the registry file being read
+instead of throwing a fatal exception.
+
+If the error is severe, a scalar method 
+will return nothing and a list method
+will return an empty list.
+So calling get_subkey or get_value will return nothing
+if there is severe error with the specified key or value
+and calling get_list_of_subkeys or get_list_of_values will return
+an empty list
+if there are severe errors with all of the subkeys or values.
+If there are severe errors with only some of the subkeys or values,
+then a partial list will be returned.
+
+However, some errors are survivable.
+Windows 95 keys store the key information in two places.
+If information is only retrieved from the first place,
+the Key object will exist, but will have no name and no values.
+Windows NT values generally store data in another area
+of the registry file. 
+If the data cannot be retrieved, the Value object will exist,
+but will return nothing for its data.
+
+If available, information about the key you were in when
+you encountered an error will be appended to the error message.
+
+Warning messages can be disabled using:
+
+    Parse::Win32Registry::disable_warnings;
+
+and re-enabled using:
+
+    Parse::Win32Registry::enable_warnings;
+
+You can prevent undefined Key or Value objects from causing
+your scripts to die by checking they exist
+before calling any methods on them:
+
+    if (my $key = $root_key->get_subkey("Software\\Perl")) {
+        print $key->as_string, "\n";
+        if (my $value = $key->get_value("Version")) {
+            print $value->as_string, "\n";
+        }
     }
+
+=head1 ADVANCED METHODS
+
+These methods are intended for those
+who want to look at the structure of a registry file,
+but with something a little more helpful than a hex editor.
+
+They are not designed for pulling data out of keys and values.
+They are designed for providing technical information about keys and values.
+
+Most of these methods are demonstrated by the supplied regscan.pl script.
+
+=head2 Registry Object Methods
+
+=over 4
+
+=item $registry->get_next_entry
+
+Iterates through the entries in a registry file,
+returning them one by one,
+beginning with the first.
+
+Each entry represents
+a single record in the RGKN block of a Windows 95 registry file,
+or a single record in a HBIN block of a Windows NT registry file.
+
+These entries will include unused and potentially invalid entries.
+
+=item $registry->move_to_first_entry
+
+Resets the iterator to the first entry in the registry file.
+
+=back
+
+=head2 Entry Object Methods
+
+=over 4
+
+=item $entry->get_offset
+
+Returns the position of the entry relative to the start of the file.
+
+=item $entry->as_string
+
+Returns a string representation of the entry.
+
+If the entry is a valid Key or Value object,
+then as_string will delegate the response
+to the as_string method of that object.
+
+=item $entry->parse_info
+
+Returns a string containing a summary of the parser information
+for that entry.
+
+If the entry is a valid Key or Value object,
+then parse_info will delegate the response
+to the parse_info method of that object.
+
+=item $entry->as_hexdump
+
+Returns a string containing a hex dump
+of the on-disk data for the entry.
+
+=back
+
+=head2 Key Object Methods
+
+=over 4
+
+=item $key->parse_info
+
+Returns a string containing a summary of the parser information
+for the key.
+
+=item $key->as_hexdump
+
+Returns a string containing a hex dump
+of the on-disk data for the key.
+
+=back
+
+=head2 Value Object Methods
+
+=over 4
+
+=item $value->parse_info
+
+Returns a string containing a summary of the parser information
+for the value.
+
+=item $value->as_hexdump
+
+Returns a string containing a hex dump
+of the on-disk data for the value.
+
+=back
 
 =head1 SCRIPTS
 
+All of the supplied scripts are intended to be used either as tools
+or as examples for you to modify and develop.
+
+When specifying subkeys on the command line, note that you need to
+quote the backslashes on Unix systems, so:
+
+    regdump.pl ntuser.dat "software\microsoft\windows nt"
+
+should be entered as:
+
+    regdump.pl ntuser.dat "software\\microsoft\\windows nt"
+
+or:
+
+    regdump.pl ntuser.dat 'software\microsoft\windows nt'
+
 =head2 regdump.pl
 
-regdump.pl is used to display the keys and values of a registry file. 
-You can use this to help develop your own scripts,
-or as a command line tool for examining registry files.
+regdump.pl is used to display the keys and values of a registry file.
 
 Type regdump.pl on its own to see the help:
 
-    regdump.pl <filename> [subkey] [-r] [-q]
+    regdump.pl <filename> [subkey] [-r] [-v] [-x]
         -r or --recurse     traverse all child keys from the root key
                             or the subkey specified
-        -q or --quiet       do not display values
+        -v or --values      display values
+        -x or --hexdump     display value data as a hex dump
 
 The contents of the root key will be displayed unless a subkey is
 specified. Paths to subkeys are always specified relative to the root
@@ -583,25 +841,60 @@ you are interested in:
 
     regdump.pl ntuser.dat software
     regdump.pl ntuser.dat software\microsoft
-    regdump.pl ntuser.dat software\microsoft\windows
-    regdump.pl ntuser.dat software\microsoft\windows\currentversion
     ...
 
 Remember to quote any subkey path that contains spaces:
 
-    regdump.pl ntuser.dat "software\microsoft\windows nt\currentversion"
+    regdump.pl ntuser.dat "software\microsoft\windows nt"
+
+=head2 regexport.pl
+
+regexport.pl will display registry keys and values
+in the Windows Registry Editor Version 5.00 format
+used by REGEDIT on Windows 2000 and later.
+
+Type regexport.pl on its own to see the help:
+
+    regexport.pl <filename> [subkey] [-r]
+        -r or --recurse     traverse all child keys from the root key
+                            or the subkey specified
+
+It usage is very similar to regdump.pl,
+except that values are always displayed.
+
+Subkeys are displayed as comments when not recursing.
+
+=head2 regdiff.pl
+
+regdiff.pl is used to compare two registry files and identify the
+differences between them.
+
+Type regdiff.pl on its own to see the help:
+
+    regdiff.pl <filename1> <filename2> [subkey] [-p] [-v]
+        -p or --previous    show the previous key or value
+                            (this is not normally shown)
+        -v or --values      display values
+
+When comparing Windows NT based registry files, regdiff.pl can
+identify if a key has been updated by comparing timestamps.
+When comparing Windows 95 based registry files, it needs to check all
+its values to see if any have changed.
+
+You can limit the comparison by specifying an initial subkey.
 
 =head2 regfind.pl
 
-regfind.pl is used to search the keys, values, or data
+regfind.pl is used to search the keys, values, data, or types
 of a registry file for a matching string.
 
 Type regfind.pl on its own to see the help:
 
-    regfind.pl <filename> <search-string> [-k] [-v] [-d]
-        -k or --key       search key names for a match
-        -v or --value     search value names for a match
-        -d or --data      search value data for a match
+    regfind.pl <filename> <search-string> [-k] [-v] [-d] [-t]
+        -k or --key         search key names for a match
+        -v or --value       search value names for a match
+        -d or --data        search value data for a match
+        -t or --type        search value types for a match
 
 To search for the string "recent" in the names of any keys or values:
 
@@ -611,57 +904,86 @@ To search for the string "administrator" in the data of any values:
 
     regfind.pl ntuser.dat administrator -d
 
+To search for the string "username" in the name of any values:
+
+    regfind.pl ntuser.dat username -v
+
+To search for urls in the data of any values:
+
+    regfind.pl software "http://" -d
+
+To search for key names that look like file extensions:
+
+    regfind.pl software "^\.[a-z0-9]+" -k
+
+To list all REG_MULTI_SZ values:
+
+    regfind.pl ntuser.dat -t multi_sz
+
 Search strings are not case-sensitive.
 
-=head2 regdiff.pl
+=head2 regscan.pl
 
-regdiff.pl is used to compare two registry files and identify the
-differences between them.
+regscan.pl dumps all the entries in a registry file.
+This will include defunct keys and values that are no longer part
+of the current active registry.
 
-Type regdiff.pl on its own to see the help:
+Type regscan.pl on its own to see the help:
 
-    regdiff.pl <filename1> <filename2> [subkey] [-p] [-q]
-        -p or --previous    show the previous key or value
-                            (this is not normally shown)
-        -q or --quiet       do not display values
+    regscan.pl <filename> [-d] [-s] [-x]
+        -d or --debug       show the technical information for an entry
+                            instead of the string representation
+        -s or --silent      suppress the display of warning messages
+                            for invalid keys and values
+        -x or --hexdump     show the on-disk entries as a hex dump
 
-When comparing Windows NT based registry files, regdiff.pl can
-identify if a key has been updated by comparing timestamps.
-When comparing Windows 95 based registry files, it needs to check all
-its values to see if any have changed.
+=head2 regstats.pl
 
-You can limit the comparison by specifying an initial subkey.
+regstats.pl counts the number of keys and values in a registry file.
+It will also provide a count of each value type if requested.
 
-=head1 TROUBLESHOOTING
+Type regstats.pl on its own to see the help:
 
-If you run into problems parsing a registry file, the error message
-will probably begin with 'Could not read...' or 'Invalid...'.
-Troubleshooting these messages is possible, but you will need to
-be comfortable dealing with binary data and be prepared to refer
-to the source for information on the internal registry data
-structures.
+    regstats.pl <filename> [-t]
+        -t or --types       count value types
 
-'Could not read...' indicates that the code tried to read data that
-did not exist; this is typically because the offset to that data was
-invalid. To identify the source of the incorrect offset, you need to
-work down through the registry tree, key by key, until you reach the
-key or value that generates the error. Suspect the preceding key of
-holding invalid data.
+=head2 regtimeline.pl
 
-'Invalid...' indicates that the data was read successfully, but one of
-the checks failed. This will occur either because the offset to that
-data was invalid and points to the wrong place in the registry file
-(which can be troubleshot as for 'Could not read...'), or because the
-data being parsed is a new type of data structure. Unfortunately there
-is no easy way to distinguish these without becoming familiar with
-internal registry data structures. If you do think it is a new type of
-data structure, let the author know.
+regtimeline.pl displays keys and values in date order.
 
-The debugging_info method can be used in place of the as_string method
-to display additional information about keys and values.
-This method has not been documented as it is not considered a stable
-part of the public interface, and its output is largely
-unintelligible to the unfamiliar. You may, however, find it useful.
+As only Windows NT based registry keys provide timestamps,
+this script only works on Windows NT registry files.
+
+You can limit the display to a given number of days
+(counting back from the timestamp of the last key).
+
+Type regtimeline.pl on its own to see the help:
+
+    regtimeline.pl <filename> [subkey] [-l <number>] [-v]
+        -l or --last        display only the last <number> days
+                            of registry activity
+        -v or --values      display values
+
+=head2 regtree.pl
+
+regtree.pl simply displays the registry as an indented tree,
+optionally displaying the values of each key.
+
+Type regtree.pl on its own to see the help:
+
+    regtree.pl <filename> [subkey] [-v]
+        -v or --values      display values
+
+=head2 regview.pl
+
+regview.pl is a GTK+ Registry Viewer.
+It offers the traditional tree of registry keys on the left hand side,
+a list of values on the right,
+and a hex dump of the value data at the bottom.
+
+It requires Gtk2-Perl to be installed. 
+Links to Windows binaries can be found via the project home page at
+L<http://gtk2-perl.sourceforge.net/win32/>.
 
 =head1 ACKNOWLEDGEMENTS
 
@@ -669,18 +991,18 @@ This would not have been possible without the work of those people who have
 analysed and documented the structure of Windows Registry files, namely:
 the WINE Project (see misc/registry.c in older releases),
 the Samba Project (see utils/editreg.c and utils/profiles.c),
-the oft-referenced B.D. (for WinReg.txt),
+B.D. (for WinReg.txt),
 and Petter Nordahl-Hagen (see chntpw's ntreg.h).
+
+My appreciation to those who have sent me their thanks.
 
 =head1 AUTHOR
 
 James Macfarlane, E<lt>jmacfarla@cpan.orgE<gt>
 
-If you have any requests or contributions, contact me.
-
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2006,2007 by James Macfarlane
+Copyright (C) 2006,2007,2008 by James Macfarlane
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

@@ -1,54 +1,91 @@
+#!/usr/bin/perl
 use strict;
 use warnings;
-no warnings 'utf8';
 
 binmode(STDOUT, ':utf8');
 
 use File::Basename;
 use Getopt::Long;
-use Parse::Win32Registry;
+use Parse::Win32Registry qw(:REG_);
 
 Getopt::Long::Configure('bundling');
 
-GetOptions('key|k'   => \my $search_keys,
-           'value|v' => \my $search_values,
-           'data|d'  => \my $search_data);
+GetOptions('key|k'      => \my $search_keys,
+           'value|v'    => \my $search_values,
+           'data|d'     => \my $search_data,
+           'type|t'     => \my $search_type);
 
 my $filename = shift or die usage();
 my $regexp = shift or die usage();
 
-if (!$search_keys && !$search_values && !$search_data) {
+if (!$search_keys && !$search_values && !$search_data && !$search_type) {
     warn usage();
-    die "\nYou need to specify at least one of -k, -v, or -d\n";
+    die "\nYou need to specify at least one of -k, -v, -d, or -t\n";
 }
 
-my $registry = Parse::Win32Registry->new($filename);
-my $root_key = $registry->get_root_key;
+my $registry = Parse::Win32Registry->new($filename)
+    or die "'$filename' is not a registry file\n";
+my $root_key = $registry->get_root_key
+    or die "Could not get root key of '$filename'\n";
 
 traverse($root_key);
 
 sub traverse {
     my $key = shift;
     
-    if ($search_keys) {
-        foreach my $subkey ($key->get_list_of_subkeys) {
-            if ($subkey->get_name =~ /$regexp/oi) {
-                print "KEY\t", $subkey->get_path, "\n";
-            }
-        }
+    my $matching_key = "";
+    my %matching_values = ();
+
+    if ($search_keys && $key->get_name =~ /$regexp/oi) {
+        $matching_key = $key;
     }
     
-    if ($search_values || $search_data) {
+    if ($search_values || $search_data || $search_type) {
         foreach my $value ($key->get_list_of_values) {
-            if ($search_values && $value->get_name =~ /$regexp/oi) {
-                print "VALUE\t", $key->get_path, "\\", $value->as_string, "\n";
+            if ($search_type && $value->get_type_as_string =~ /$regexp/oi) {
+                $matching_key = $key;
+                $matching_values{$value->get_name} = $value;
             }
-            if ($search_data && $value->get_data =~ /$regexp/oi) {
-                print "DATA\t", $key->get_path, "\\", $value->as_string, "\n";
+            if ($search_values && $value->get_name =~ /$regexp/oi) {
+                $matching_key = $key;
+                $matching_values{$value->get_name} = $value;
+            }
+            if ($search_data && defined($value->get_data)) {
+                if ($value->get_type_as_string =~ /SZ$/) {
+                    {
+                        no warnings; # avoid malformed UTF-8 warnings
+                        if ($value->get_data =~ /$regexp/oi) {
+                            $matching_key = $key;
+                            $matching_values{$value->get_name} = $value;
+                        }
+                    }
+                }
+                elsif ($value->get_type == REG_DWORD) {
+                    if ($value->get_data_as_string =~ /$regexp/oi) {
+                        $matching_key = $key;
+                        $matching_values{$value->get_name} = $value;
+                    }
+                }
+                else {
+                    if ($value->get_data =~ /$regexp/o) {
+                        $matching_key = $key;
+                        $matching_values{$value->get_name} = $value;
+                    }
+                }
             }
         }
     }
     
+    if ($matching_key) {
+        print $matching_key->get_path, "\n";
+        foreach my $name (keys %matching_values) {
+            my $value = $matching_values{$name};
+            print $value->as_string, "\n";
+        }
+        print "\n" if $search_values || $search_type || $search_data;
+    }
+        
+
     foreach my $subkey ($key->get_list_of_subkeys) {
         traverse($subkey);
     }
@@ -59,9 +96,10 @@ sub usage {
     return <<USAGE;
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
 
-$script_name <filename> <search-string> [-k] [-v] [-d]
-    -k or --key       search key names for a match
-    -v or --value     search value names for a match
-    -d or --data      search value data for a match
+$script_name <filename> <search-string> [-k] [-v] [-d] [-t]
+    -k or --key         search key names for a match
+    -v or --value       search value names for a match
+    -d or --data        search value data for a match
+    -t or --type        search value types for a match
 USAGE
 }

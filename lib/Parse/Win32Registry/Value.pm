@@ -4,8 +4,7 @@ use strict;
 use warnings;
 
 use Carp;
-
-use Parse::Win32Registry qw(:REG_);
+use Parse::Win32Registry::Base qw(:all);
 
 sub get_name {
     my $self = shift;
@@ -40,8 +39,8 @@ sub get_type_as_string {
         return $type_as_string;
     }
     else {
-        # The SAM contains values with unrecognised types
-        return "[type=$self->{_type}]";
+        # Return unrecognised types as REG_<number>
+        return "REG_$self->{_type}";
     }
 }
 
@@ -60,9 +59,9 @@ sub get_data_as_string {
         return $data;
     }
     elsif ($type == REG_MULTI_SZ) {
-        my @data = split("\x00", $data);
-        my $i = -1;
-        return join(" ", map { $i++; "[$i] $_" } @data);
+        my @data = $self->get_data;
+        my $i = 0;
+        return join(" ", map { "[" . $i++ . "] $_" } @data);
     }
     elsif ($type == REG_DWORD) {
         return sprintf "0x%08x (%u)", $data, $data;
@@ -70,6 +69,18 @@ sub get_data_as_string {
     else {
         return join(" ", map { sprintf("%02x", $_) } unpack("C*", $data));
     }
+}
+
+sub get_raw_data {
+    my $self = shift;
+
+    return $self->{_data};
+}
+
+sub get_data_as_hexdump {
+    my $self = shift;
+
+    return hexdump($self->{_data});
 }
 
 sub as_string {

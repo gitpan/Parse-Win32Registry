@@ -2,10 +2,20 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-
-use Parse::Win32Registry qw(:REG_);
-
-die 'Incorrect version' if $Parse::Win32Registry::VERSION != '0.30';
+use Parse::Win32Registry qw(
+    REG_NONE
+    REG_SZ
+    REG_EXPAND_SZ
+    REG_BINARY
+    REG_DWORD
+    REG_DWORD_BIG_ENDIAN
+    REG_LINK
+    REG_MULTI_SZ
+    REG_RESOURCE_LIST
+    REG_FULL_RESOURCE_DESCRIPTOR
+    REG_RESOURCE_REQUIREMENTS_LIST
+    REG_QWORD
+);
 
 {
     my @tests = (

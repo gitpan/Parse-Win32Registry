@@ -1,3 +1,4 @@
+#!/usr/bin/perl
 use strict;
 use warnings;
 
@@ -9,18 +10,22 @@ use Parse::Win32Registry;
 
 Getopt::Long::Configure('bundling');
 
-GetOptions('quiet|q'    => \my $quiet,
-           'previous|p' => \my $show_previous);
+GetOptions('previous|p' => \my $show_previous,
+           'values|v'   => \my $show_values);
 
 my $left_filename = shift or die usage();
 my $right_filename = shift or die usage();
 
 my $initial_key_name = shift;
 
-my $left_registry = Parse::Win32Registry->new($left_filename);
-my $right_registry = Parse::Win32Registry->new($right_filename);
-my $left_root_key = $left_registry->get_root_key;
-my $right_root_key = $right_registry->get_root_key;
+my $left_registry = Parse::Win32Registry->new($left_filename)
+    or die "'$left_filename' is not a registry file\n";
+my $right_registry = Parse::Win32Registry->new($right_filename)
+    or die "'$right_filename' is not a registry file\n";
+my $left_root_key = $left_registry->get_root_key
+    or die "Could not get root key of '$left_filename'\n";
+my $right_root_key = $right_registry->get_root_key
+    or die "Could not get root key of '$right_filename'\n";
 
 if (defined($initial_key_name)) {
     $left_root_key = $left_root_key->get_subkey($initial_key_name);
@@ -103,7 +108,7 @@ sub traverse_together {
         else {
             # There are no differences between the timestamps
             # or neither key has a valid timestamp.
-            if (!$quiet) {
+            if ($show_values) {
                 if ($changed > 0) {
                     #print "\t$changed VALUES CHANGED IN\n";
                     if (defined($left_key)) {
@@ -117,7 +122,7 @@ sub traverse_together {
         }
     }
 
-    if (!$quiet) {
+    if ($show_values) {
         # Print out changed values
         foreach my $value_name (keys %values) {
             my $left_value = $values{$value_name}{left};
@@ -153,7 +158,8 @@ sub traverse_together {
     }
 
     foreach my $key_name (keys %subkeys) {
-        traverse_together($subkeys{$key_name}{left}, $subkeys{$key_name}{right});
+        traverse_together($subkeys{$key_name}{left},
+                          $subkeys{$key_name}{right});
     }
 }
 
@@ -162,9 +168,9 @@ sub usage {
     return <<USAGE;
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
 
-$script_name <filename1> <filename2> [subkey] [-p] [-q]
+$script_name <filename1> <filename2> [subkey] [-p] [-v]
     -p or --previous    show the previous key or value
                         (this is not normally shown)
-    -q or --quiet       do not display values
+    -v or --values      display values
 USAGE
 }

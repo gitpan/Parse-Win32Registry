@@ -6,19 +6,22 @@ use warnings;
 use base qw(Parse::Win32Registry::Value);
 
 use Carp;
-
-use Parse::Win32Registry qw(hexdump :REG_);
+use Encode;
+use Parse::Win32Registry::Base qw(:all);
 
 sub new {
     my $class = shift;
-
     my $regfile = shift;
     my $offset = shift; # offset to RGDB value entry
+    my $parent_key_path = shift; # parent key path (for errors)
 
-    my $self = {};
+    die "unexpected error: undefined regfile" unless defined $regfile;
+    die "unexpected error: undefined offset" unless defined $offset;
 
-    $self->{_regfile} = $regfile;
-    $self->{_offset} = $offset;
+    # when errors are encountered
+    my $whereabouts = (defined $parent_key_path)
+                    ? " (a value of $parent_key_path)"
+                    : "";
 
 	# RGDB Value Entry
 	# 0x00 dword = value type
@@ -33,36 +36,46 @@ sub new {
 	sysseek($regfile, $offset, 0);
     sysread($regfile, my $rgdb_value_entry, 12);
     if (!defined($rgdb_value_entry) || length($rgdb_value_entry) != 12) {
-        croak "Could not read RGDB entry for value at offset ",
-            sprintf("0x%x\n", $offset);
+        log_error("Could not read RGDB entry for value at 0x%x%s",
+            $offset, $whereabouts);
+        return;
     }
 
-    my ($value_type, $value_name_len, $value_data_len)
-        = unpack("Vx4vv", $rgdb_value_entry);
+    my ($type,
+        $name_len,
+        $data_len) = unpack("Vx4vv", $rgdb_value_entry);
 
-    sysread($regfile, my $value_name, $value_name_len);
-    if (!defined($value_name) || length($value_name) != $value_name_len) {
-        croak "Could not read RGDB entry name for value at offset ",
-            sprintf("0x%x\n", $offset);
+    sysread($regfile, my $name, $name_len);
+    if (!defined($name) || length($name) != $name_len) {
+        log_error("Could not read RGDB entry name for value at 0x%x%s",
+            $offset, $whereabouts);
+        return;
     }
 
-    sysread($regfile, my $value_data, $value_data_len);
-    if (!defined($value_data) || length($value_data) != $value_data_len) {
-        croak "Could not read RGDB entry data for value at offset ",
-            sprintf("0x%x\n", $offset);
+    sysread($regfile, my $data, $data_len);
+    if (!defined($data) || length($data) != $data_len) {
+        log_error("Could not read RGDB entry data for value at 0x%x%s",
+            $offset, $whereabouts);
+        return;
     }
 
-    my $size_on_disk = length($rgdb_value_entry)
-                     + $value_name_len
-                     + $value_data_len;
+    my $size_on_disk = length($rgdb_value_entry) + $name_len + $data_len;
 
-    $self->{_name} = $value_name;
-    $self->{_type} = $value_type;
-    $self->{_data} = $value_data;
+    if ($type == REG_DWORD) {
+        if ($data_len != 4) {
+            $data = undef;
+        }
+    }
 
+    my $self = {};
+    $self->{_regfile} = $regfile;
+    $self->{_offset} = $offset;
+    $self->{_name} = $name;
+    $self->{_type} = $type;
+    $self->{_data} = $data;
     $self->{_size_on_disk} = $size_on_disk;
-
     bless $self, $class;
+
     return $self;
 }
 
@@ -73,7 +86,6 @@ sub get_data {
     die "unexpected error: undefined type" if !defined($type);
 
     my $data = $self->{_data};
-    die "unexpected error: undefined data" if !defined($data);
     
     # apply decoding to appropriate data types
     if ($type == REG_DWORD) {
@@ -81,7 +93,7 @@ sub get_data {
             $data = unpack("V", $data);
         }
         else {
-            #croak "incorrect length for dword data";
+            # incorrect length for dword data
             $data = undef;
         }
     }
@@ -94,32 +106,77 @@ sub get_data {
             $data = substr($data, 0, length($data) - 1);
         }
     }
+    elsif ($type == REG_MULTI_SZ) {
+        my @s = unpack_string($data);
+        pop @s if @s > 1 && $s[-1] eq ''; # drop trailing empty string
+        return wantarray ? @s : join($", @s);
+    }
 
     return $data;
 }
 
-sub debugging_info {
+sub as_regedit_export {
     my $self = shift;
+    my $version = shift || 5;
 
-    my $s = sprintf "%s [rgdb @ 0x%x] ", $self->{_name}, $self->{_offset};
+    my $name = $self->get_name;
+    my $s = $name eq '' ? '@=' : '"' . $name . '"=';
 
-    $s .= "[type=" . $self->get_type . "] "
-        . "(" . $self->get_type_as_string . ") "
-        . "[len=" . length($self->{_data}) . "] "
-        . $self->get_data_as_string . "\n";
+    my $type = $self->get_type;
 
-    if (0) {
-        $s .= hexdump($self->{_data});
+    if ($type == REG_SZ) {
+        $s .= '"' . $self->get_data . '"'; # get_data returns a utf8 string
+        $s .= "\n";
     }
-
-    # dump on-disk structure
-    if (1) {
-        sysseek($self->{_regfile}, $self->{_offset}, 0);
-        sysread($self->{_regfile}, my $buffer, $self->{_size_on_disk});
-        $s .= hexdump($buffer, $self->{_offset});
+    elsif ($type == REG_BINARY) {
+        $s .= 'hex:';
+        $s .= formatted_octets($self->get_data, length($s));
     }
-
+    elsif ($type == REG_DWORD) {
+        my $data = $self->get_data;
+        $s .= defined($data)
+            ? sprintf("dword:%08x", $data)
+            : "dword:";
+        $s .= "\n";
+    }
+    elsif ($type == REG_EXPAND_SZ || $type == REG_MULTI_SZ) {
+        my $data = $version == 4
+                 ? $self->{_data} # raw data
+                 : encode("UCS-2LE", $self->{_data}); # ansi->unicode
+        $s .= sprintf("hex(%x):", $type);
+        $s .= formatted_octets($data, length($s));
+    }
+    else {
+        my $data = $self->get_data;
+        $s .= sprintf("hex(%x):", $type);
+        $s .= formatted_octets($data, length($s));
+    }
     return $s;
+}
+
+sub parse_info {
+    my $self = shift;
+    my $verbose = shift;
+
+    my $s = sprintf 'rgdb=0x%x "%s" type=%s (%s) data=%d bytes',
+        $self->{_offset},
+        $self->{_name},
+        $self->get_type,
+        $self->get_type_as_string,
+        length($self->{_data});
+}
+
+sub as_hexdump {
+    my $self = shift;
+    my $regfile = $self->{_regfile};
+
+    my $hexdump = '';
+
+    sysseek($regfile, $self->{_offset}, 0);
+    sysread($regfile, my $buffer, $self->{_size_on_disk});
+    $hexdump .= hexdump($buffer, $self->{_offset});
+
+    return $hexdump;
 }
 
 1;
