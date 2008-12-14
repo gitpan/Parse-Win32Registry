@@ -61,6 +61,8 @@ sub usage {
     return <<USAGE;
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
 
+Displays information about a registry file.
+
 $script_name <filename> [-t]
     -t or --types       count value types
 USAGE

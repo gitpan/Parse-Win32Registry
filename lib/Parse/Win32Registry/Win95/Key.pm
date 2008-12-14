@@ -75,15 +75,19 @@ sub new {
     $self->{_rgkn_block_num} = $rgkn_block_num;
     bless $self, $class;
 
-    $self->{_name} = '';      # default
-    $self->{_key_path} = '';  # default
-    $self->{_num_values} = 0; # default
+    $self->{_name} = '';       # default, overridden by look_up_rgdb_entry
+    $self->{_name_length} = 0; # default, overridden by look_up_rgdb_entry
+    $self->{_num_values} = 0;  # default, overridden by look_up_rgdb_entry
+    # $self->{_offset_to_rgdb_entry} should also be set by look_up_rgdb_entry
 
-    $self->{_parent_key_path} = $parent_key_path; # for errors in lookup
+    $self->{_key_path} = '';   # default, overridden after name looked up
+
+    # remember the _parent_key_path in for errors in look_up_rgdb_entry
+    $self->{_parent_key_path} = $parent_key_path;
 
     # look up RGDB entry to determine the key's name and number of values
     if ($self->_look_up_rgdb_entry) {
-        # _name and _num_values show now be defined (if they were found)
+        # _name should now be defined (if they were found)
         my $name = $self->{_name};
         $self->{_key_path} = (defined $parent_key_path)
                            ? "$parent_key_path\\$name"
@@ -295,8 +299,6 @@ sub get_timestamp_as_string {
 }
 
 sub get_type {
-    my $self = shift;
-
     return undef;
 }
 
@@ -325,6 +327,10 @@ sub get_parent {
 
     return Parse::Win32Registry::Win95::Key->new($regfile, $offset_to_parent,
                                                            $parent_key_path);
+}
+
+sub get_class_name {
+    return undef;
 }
 
 sub as_string {
@@ -446,13 +452,13 @@ sub get_list_of_values {
         if (my $value = Parse::Win32Registry::Win95::Value->new($regfile,
                         $offset_to_rgdb_value_entry, $key_path)) {
             push @values, $value;
-            if ($value->{_size_on_disk} < 12) {
+            if ($value->{_size} < 12) {
                 log_error(
                     "RGDB entry size smaller than expected for value at 0x%x%s",
                     $offset_to_rgdb_value_entry, $whereabouts);
                 return;
             }
-            $offset_to_rgdb_value_entry += $value->{_size_on_disk};
+            $offset_to_rgdb_value_entry += $value->{_size};
         }
         else {
             log_error(

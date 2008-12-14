@@ -71,6 +71,8 @@ sub usage {
     return <<USAGE;
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
 
+Dumps the keys and values of a registry file.
+
 $script_name <filename> [subkey] [-r] [-v] [-x]
     -r or --recurse     traverse all child keys from the root key
                         or the subkey specified

@@ -96,6 +96,8 @@ sub usage {
     return <<USAGE;
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
 
+Searches a registry file for anything that matches the specified string.
+
 $script_name <filename> <search-string> [-k] [-v] [-d] [-t]
     -k or --key         search key names for a match
     -v or --value       search value names for a match

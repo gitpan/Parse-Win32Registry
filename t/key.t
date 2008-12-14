@@ -25,6 +25,7 @@ sub run_key_tests
         my $timestamp = $test->{timestamp};
         my $timestamp_as_string = $test->{timestamp_as_string};
         my $type = $test->{type};
+        my $class_name = $test->{class_name};
 
         my $key_path = "$root_key_name\\$path";
 
@@ -59,6 +60,13 @@ sub run_key_tests
         }
         else {
             ok(!defined($key->get_type), 'get_type undefined');
+        }
+
+        if (defined($class_name)) {
+            is($key->get_class_name, $class_name, "get_class_name");
+        }
+        else {
+            ok(!defined($key->get_class_name), 'get_class_name undefined');
         }
 
         my $as_string = defined($timestamp)
@@ -241,6 +249,7 @@ sub run_key_tests
             timestamp => 993752854,
             timestamp_as_string => '2001-06-28T18:27:34Z',
             type => 0x20,
+            class_name => 'Class',
         },
         {
             path => 'key2',
@@ -250,6 +259,7 @@ sub run_key_tests
             timestamp => 1021900351,
             timestamp_as_string => '2002-05-20T13:12:31Z',
             type => 0x20,
+            class_name => 'Class',
         },
         {
             path => 'key1\\key3',

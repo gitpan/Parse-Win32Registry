@@ -1,5 +1,12 @@
 Revision history for Perl extension Parse::Win32Registry.
 
+** 0.41 2008-12-14
+
+Added the new get_class_name function for Windows NT registry keys.
+Added the regclassnames.pl script to demonstrate finding keys that
+have class names, and updated regview.pl to display the timestamp
+and class names of keys in additional columns.
+
 ** 0.40 2008-09-28
 
 Added new scripts: regexport.pl for exporting keys and values using

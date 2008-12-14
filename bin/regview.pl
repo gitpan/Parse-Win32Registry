@@ -2,6 +2,8 @@
 use strict;
 use warnings;
 
+binmode(STDOUT, ':utf8');
+
 use Glib ':constants';
 use Gtk2 -init;
 
@@ -88,12 +90,25 @@ $vbox->pack_start($vpane, TRUE, TRUE, 0);
 
 ### TREE VIEW
 
-my $tree_store = Gtk2::TreeStore->new('Glib::String', 'Glib::Scalar');
+my $tree_store = Gtk2::TreeStore->new(
+    'Glib::String', 'Glib::String', 'Glib::String', 'Glib::Scalar',
+    );
 my $tree_view = Gtk2::TreeView->new($tree_store);
 
 my $tree_column1 = Gtk2::TreeViewColumn->new_with_attributes(
     'Key', Gtk2::CellRendererText->new, text => 0);
 $tree_view->append_column($tree_column1);
+$tree_column1->set_resizable(TRUE);
+
+my $tree_column2 = Gtk2::TreeViewColumn->new_with_attributes(
+    'Time', Gtk2::CellRendererText->new, text => 1);
+$tree_view->append_column($tree_column2);
+$tree_column2->set_resizable(TRUE);
+
+my $tree_column3 = Gtk2::TreeViewColumn->new_with_attributes(
+    'Class', Gtk2::CellRendererText->new, text => 2);
+$tree_view->append_column($tree_column3);
+$tree_column3->set_resizable(TRUE);
 
 $tree_view->signal_connect('row-expanded' => \&tree_row_expanded);
 $tree_view->signal_connect('row-activated' => \&tree_row_activated);
@@ -215,7 +230,12 @@ sub tree_row_activated {
 sub add_root {
     my ($model, $parent_iter, $key) = @_;
     my $iter = $model->append($parent_iter);
-    $model->set($iter, 0, $key->get_name, 1, $key);
+    $model->set($iter,
+        0 => $key->get_name,
+        1 => $key->get_timestamp ? $key->get_timestamp_as_string : "",
+        2 => $key->get_class_name ? $key->get_class_name : "",
+        3 => $key,
+        );
     my $dummy = $model->append($iter);
 }
 
@@ -226,8 +246,13 @@ sub add_children {
         for my $subkey (@subkeys) {
             my $child_iter = $model->append($parent_iter);
             $model->set($child_iter,
-                0, $subkey->get_name,
-                1, $subkey);
+                0 => $subkey->get_name,
+                1 => $subkey->get_timestamp ? $subkey->get_timestamp_as_string
+                                            : "",
+                2 => $subkey->get_class_name ? $subkey->get_class_name
+                                            : "",
+                3 => $subkey,
+                );
             my $dummy = $model->append($child_iter);
         }
     }
@@ -236,7 +261,7 @@ sub add_children {
 sub tree_row_expanded {
     my ($view, $iter, $path) = @_;
     my $model = $view->get_model;
-    my $key = $model->get($iter, 1);
+    my $key = $model->get($iter, 3);
     my $first_child_iter = $model->iter_nth_child($iter, 0);
     if (!defined $model->get($first_child_iter, 0)) {
         add_children($model, $iter, $key);
@@ -250,7 +275,7 @@ sub tree_selection_changed {
     if (!defined $model || !defined $iter) {
         return;
     }
-    my $key = $model->get($iter, 1);
+    my $key = $model->get($iter, 3);
     $list_store->clear;
     my @values = $key->get_list_of_values;
     if (@values) {
@@ -272,10 +297,10 @@ sub tree_selection_changed {
     }
     my $text_buffer = $text_view->get_buffer;
     my $s = '';
-    $s .= $key->parse_info . "\n" . $key->as_hexdump;
     if ($debug_mode) {
-        $text_buffer->set_text($s);
+        $s .= $key->parse_info . "\n" . $key->as_hexdump;
     }
+    $text_buffer->set_text($s);
     $entry->set_text($key->get_path);
 }
 

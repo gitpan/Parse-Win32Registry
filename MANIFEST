@@ -32,6 +32,7 @@ t/invalid_rgkn_header.rf
 t/invalid_vk_inline_data.rf
 t/invalid_vk_signature.rf
 t/missing_hbin_root_key.rf
+t/missing_nk_class_name.rf
 t/missing_nk_name.rf
 t/missing_rgdb_entry_data_for_value.rf
 t/missing_rgdb_entry_for_key.rf
@@ -65,6 +66,7 @@ lib/Parse/Win32Registry/WinNT/File.pm
 lib/Parse/Win32Registry/WinNT/Key.pm
 lib/Parse/Win32Registry/WinNT/Value.pm
 lib/Parse/Win32Registry/WinNT/Entry.pm
+bin/regclassnames.pl
 bin/regdiff.pl
 bin/regdump.pl
 bin/regexport.pl

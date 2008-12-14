@@ -60,6 +60,8 @@ sub usage {
     return <<USAGE;
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
 
+Exports the keys and values of a registry file in REGEDIT format.
+
 $script_name <filename> [subkey] [-r]
     -r or --recurse     traverse all child keys from the root key
                         or the subkey specified

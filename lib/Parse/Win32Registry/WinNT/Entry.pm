@@ -27,6 +27,10 @@ sub new {
         $size = (0xffffffff - $size) + 1;
     }
 
+    if ($size <= 0) { # this entry is invalid
+        return;
+    }
+
     my $self = {
         _regfile => $regfile,
         _offset => $offset,
@@ -54,7 +58,7 @@ sub get_entry_type {
 sub is_in_use {
     my $self = shift;
 
-    return $self->{_is_in_use};
+    return $self->{_in_use};
 }
 
 sub as_string {
@@ -68,7 +72,7 @@ sub as_string {
 
     $entry_type = ".." if $entry_type !~ /(nk|vk|lh|lf|li|ri|sk)/;
 
-    my $string = sprintf "0x%06x %s ", $offset, $entry_type;
+    my $string = sprintf "0x%06x %s %s ", $offset, $in_use, $entry_type;
 
     if ($entry_type eq "nk") {
         if (my $key = Parse::Win32Registry::WinNT::Key->new(

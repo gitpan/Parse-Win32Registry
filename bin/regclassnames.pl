@@ -5,12 +5,7 @@ use warnings;
 binmode(STDOUT, ':utf8');
 
 use File::Basename;
-use Getopt::Long;
-use Parse::Win32Registry;
-
-Getopt::Long::Configure('bundling');
-
-GetOptions('values|v' => \my $show_values);
+use Parse::Win32Registry qw(unpack_unicode_string);
 
 my $filename = shift or die usage();
 my $initial_key_name = shift;
@@ -31,25 +26,13 @@ traverse($root_key);
 
 sub traverse {
     my $key = shift;
-    my $depth = shift || 0;
 
-    print "  " x $depth;
-    print "" if $depth > 0;
-    print $key->get_name;
-    if (defined($key->get_timestamp)) {
-        print " [", $key->get_timestamp_as_string, "]"
-    }
-    print "\n";
-
-    if ($show_values) {
-        foreach my $value ($key->get_list_of_values) {
-            print "  " x $depth;
-            print "  ", $value->as_string, "\n";
-        }
+    if (my $class_name = $key->get_class_name) {
+        print $key->get_path, " \"$class_name\"\n";
     }
     
     foreach my $subkey ($key->get_list_of_subkeys) {
-        traverse($subkey, $depth + 1);
+        traverse($subkey);
     }
 }
 
@@ -58,9 +41,8 @@ sub usage {
     return <<USAGE;
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
 
-Displays the keys and values of a registry file as an indented tree.
+Displays keys in a registry file that have a class name.
 
-$script_name <filename> [subkey] [-v]
-    -v or --values      display values
+$script_name <filename> [subkey]
 USAGE
 }

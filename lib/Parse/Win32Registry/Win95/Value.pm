@@ -42,27 +42,25 @@ sub new {
     }
 
     my ($type,
-        $name_len,
-        $data_len) = unpack("Vx4vv", $rgdb_value_entry);
+        $name_length,
+        $data_length) = unpack("Vx4vv", $rgdb_value_entry);
 
-    sysread($regfile, my $name, $name_len);
-    if (!defined($name) || length($name) != $name_len) {
+    sysread($regfile, my $name, $name_length);
+    if (!defined($name) || length($name) != $name_length) {
         log_error("Could not read RGDB entry name for value at 0x%x%s",
             $offset, $whereabouts);
         return;
     }
 
-    sysread($regfile, my $data, $data_len);
-    if (!defined($data) || length($data) != $data_len) {
+    sysread($regfile, my $data, $data_length);
+    if (!defined($data) || length($data) != $data_length) {
         log_error("Could not read RGDB entry data for value at 0x%x%s",
             $offset, $whereabouts);
         return;
     }
 
-    my $size_on_disk = length($rgdb_value_entry) + $name_len + $data_len;
-
     if ($type == REG_DWORD) {
-        if ($data_len != 4) {
+        if ($data_length != 4) {
             $data = undef;
         }
     }
@@ -73,7 +71,7 @@ sub new {
     $self->{_name} = $name;
     $self->{_type} = $type;
     $self->{_data} = $data;
-    $self->{_size_on_disk} = $size_on_disk;
+    $self->{_size} = length($rgdb_value_entry) + $name_length + $data_length;
     bless $self, $class;
 
     return $self;
@@ -86,6 +84,7 @@ sub get_data {
     die "unexpected error: undefined type" if !defined($type);
 
     my $data = $self->{_data};
+    return if !defined $data; # e.g. invalid dword data length
     
     # apply decoding to appropriate data types
     if ($type == REG_DWORD) {
@@ -173,7 +172,7 @@ sub as_hexdump {
     my $hexdump = '';
 
     sysseek($regfile, $self->{_offset}, 0);
-    sysread($regfile, my $buffer, $self->{_size_on_disk});
+    sysread($regfile, my $buffer, $self->{_size});
     $hexdump .= hexdump($buffer, $self->{_offset});
 
     return $hexdump;

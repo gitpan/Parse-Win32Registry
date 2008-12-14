@@ -51,21 +51,21 @@ my @time_tests = (
 
 foreach my $time_test (@time_tests) {
     my ($packed_filetime, $time, $time_as_string) = @$time_test;
-    my $decoded_time = convert_filetime_to_epoch_time($packed_filetime);
+    my $unpacked_time = convert_filetime_to_epoch_time($packed_filetime);
     my $filetime_in_hex = unpack("H*", $packed_filetime);
     if (defined($time)) {
         # The test data time is a Unix epoch time 
         # so is adjusted to the local OS's epoch time
         my $epoch_offset = timegm(0, 0, 0, 1, 0, 70);
         $time += $epoch_offset;
-        cmp_ok($decoded_time, '==', $time,
+        cmp_ok($unpacked_time, '==', $time,
             "$filetime_in_hex - convert_filetime_to_epoch_time == $time");
     }
     else {
-        ok(!defined($decoded_time),
+        ok(!defined($unpacked_time),
             "$filetime_in_hex - convert_filetime_to_epoch_time undefined");
     }
-    is(iso8601($decoded_time), $time_as_string,
+    is(iso8601($unpacked_time), $time_as_string,
         "$filetime_in_hex - and iso8601 eq '$time_as_string'");
 
 }

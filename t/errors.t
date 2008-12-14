@@ -94,6 +94,12 @@ my @tests = (
     },
     {
         object => 'Parse::Win32Registry::WinNT::Key',
+        filename => 'missing_nk_class_name.rf',
+        offset => 0x1020,
+        warning => 'Could not read class name at 0x',
+    },
+    {
+        object => 'Parse::Win32Registry::WinNT::Key',
         filename => 'missing_subkey_list_header.rf',
         offset => 0x1020,
         test => '@result = $object->get_list_of_subkeys',

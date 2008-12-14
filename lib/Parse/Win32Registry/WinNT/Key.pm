@@ -34,8 +34,10 @@ sub new {
     # 0x20 dword = offset to subkey list (lf, lh, ri, li)
     # 0x28 dword = number of values
     # 0x2c dword = offset to value list
+    # 0x30 dword = offset to security
+    # 0x34 dword = offset to class name
     # 0x4c word  = key name length
-    # 0x4e word  = class length
+    # 0x4e word  = class name length
     # 0x50       = key name [for name length bytes]
 
     # Extracted offsets are always relative to first HBIN
@@ -56,8 +58,11 @@ sub new {
         $offset_to_subkey_list,
         $num_values,
         $offset_to_value_list,
+        $offset_to_security,
+        $offset_to_class_name,
         $name_length,
-        ) = unpack("Va2va8x4VVx4Vx4VVx28v", $nk_header);
+        $class_name_length,
+        ) = unpack("Va2va8x4VVx4Vx4VVVVx20vv", $nk_header);
 
     $offset_to_parent += OFFSET_TO_FIRST_HBIN
         if $offset_to_parent != 0xffffffff;
@@ -65,6 +70,10 @@ sub new {
         if $offset_to_subkey_list != 0xffffffff;
     $offset_to_value_list += OFFSET_TO_FIRST_HBIN
         if $offset_to_value_list != 0xffffffff;
+    $offset_to_security += OFFSET_TO_FIRST_HBIN
+        if $offset_to_security != 0xffffffff;
+    $offset_to_class_name += OFFSET_TO_FIRST_HBIN
+        if $offset_to_class_name != 0xffffffff;
 
     if ($sig ne "nk") {
         log_error("Invalid key signature at 0x%x%s", $offset, $whereabouts);
@@ -91,10 +100,27 @@ sub new {
                  ? "$parent_key_path\\$name"
                  : "$name";
 
+    my $class_name;
+    if ($offset_to_class_name != 0xffffffff) {
+        sysseek($regfile, $offset_to_class_name + 4, 0);
+        sysread($regfile, $class_name, $class_name_length);
+        if (!defined($class_name) || 
+              length($class_name) != $class_name_length) {
+            log_error(
+                "Could not read class name at 0x%x for key '%s' at 0x%x%s",
+                $offset_to_class_name, $name, $offset, $whereabouts);
+            return;
+        }
+        else {
+            $class_name = unpack_unicode_string($class_name);
+        }
+    }
+
     my $self = {};
     $self->{_regfile} = $regfile;
     $self->{_offset} = $offset;
     $self->{_name} = $name;
+    $self->{_name_length} = $name_length;
     $self->{_key_path} = $key_path;
     $self->{_node_type} = $node_type;
     $self->{_offset_to_parent} = $offset_to_parent;
@@ -103,8 +129,12 @@ sub new {
     $self->{_num_values} = $num_values;
     $self->{_offset_to_value_list} = $offset_to_value_list;
     $self->{_timestamp} = unpack_windows_time($timestamp);
-
+    $self->{_offset_to_security} = $offset_to_security;
+    $self->{_offset_to_class_name} = $offset_to_class_name;
+    $self->{_class_name_length} = $class_name_length;
+    $self->{_class_name} = $class_name;
     bless $self, $class;
+
     return $self;
 }
 
@@ -152,6 +182,12 @@ sub get_parent {
                                                            $parent_key_path);
 }
 
+sub get_class_name {
+    my $self = shift;
+
+    return $self->{_class_name};
+}
+
 sub as_string {
     my $self = shift;
 
@@ -167,13 +203,21 @@ sub print_summary {
 sub parse_info {
     my $self = shift;
 
-    my $string = sprintf 'nk=0x%x par=0x%x keys=%d,0x%x vals=%d,0x%x "%s" %s',
+    my $string = sprintf 'nk=0x%x "%s" par=0x%x keys=%d,0x%x vals=%d,0x%x %s',
         $self->{_offset},
+        $self->{_name},
         $self->{_offset_to_parent},
         $self->{_num_subkeys}, $self->{_offset_to_subkey_list},
         $self->{_num_values}, $self->{_offset_to_value_list},
-        $self->{_name},
         $self->get_timestamp_as_string;
+    if (defined(my $class_name = $self->{_class_name})) {
+        $string .= sprintf ' class=0x%x,"%s"',
+            $self->{_offset_to_class_name}, $self->{_class_name};
+    }
+    else {
+        $string .= sprintf ' class=0x%x',
+            $self->{_offset_to_class_name};
+    }
 
     return $string;
 }
@@ -185,8 +229,12 @@ sub as_hexdump {
     my $hexdump = '';
 
     sysseek($regfile, $self->{_offset}, 0);
-    sysread($regfile, my $buffer, 0x50 + length($self->{_name}));
-    $hexdump = hexdump($buffer, $self->{_offset});
+    sysread($regfile, my $buffer, 0x50 + $self->{_name_length});
+    $hexdump .= hexdump($buffer, $self->{_offset});
+
+    sysseek($regfile, $self->{_offset_to_class_name}, 0);
+    sysread($regfile, $buffer, 0x4 + $self->{_class_name_length});
+    $hexdump .= hexdump($buffer, $self->{_offset_to_class_name});
 
     return $hexdump;
 }

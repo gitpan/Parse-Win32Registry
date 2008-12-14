@@ -3,7 +3,7 @@ package Parse::Win32Registry;
 use strict;
 use warnings;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use base qw(Exporter);
 
@@ -352,6 +352,14 @@ string.
 Returns the path to the key. This shows the all of the keys
 from the root key to the current key, 
 joined by the path separator '\\'.
+
+=item $key->get_class_name
+
+Returns a string containing the class name associated with a key.
+Only a very few Windows NT registry key have class names.
+
+Returns nothing if the key has no class name
+or if called on a Windows 95 registry key.
 
 =item $key->get_subkey( 'key name' )
 
@@ -863,6 +871,15 @@ It usage is very similar to regdump.pl,
 except that values are always displayed.
 
 Subkeys are displayed as comments when not recursing.
+
+=head2 regclassnames.pl
+
+regclassnames.pl will display registry keys that have class names.
+Only a very few Windows NT registry key have class names.
+
+Type regclassnames.pl on its own to see the help:
+
+    regclassnames.pl <filename> [subkey]
 
 =head2 regdiff.pl
 

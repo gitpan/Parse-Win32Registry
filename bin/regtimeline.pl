@@ -23,7 +23,7 @@ my $root_key = $registry->get_root_key
     or die "Could not get root key of '$filename'\n";
 
 if (!defined($root_key->get_timestamp)) {
-    die "'$filename' must be an NT-based registry file"
+    die "'$filename' needs to be an NT-based registry file\n"
 }
 
 if (defined($initial_key_name)) {
@@ -75,6 +75,8 @@ sub usage {
     my $script_name = basename $0;
     return <<USAGE;
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
+
+Displays the keys and values of a registry file in date order.
 
 $script_name <filename> [subkey] [-l <number>] [-v]
     -l or --last        display only the last <number> days

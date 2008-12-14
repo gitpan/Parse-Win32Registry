@@ -168,6 +168,8 @@ sub usage {
     return <<USAGE;
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
 
+Compares two registry files.
+
 $script_name <filename1> <filename2> [subkey] [-p] [-v]
     -p or --previous    show the previous key or value
                         (this is not normally shown)

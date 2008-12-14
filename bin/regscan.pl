@@ -41,6 +41,12 @@ sub usage {
     return <<USAGE;
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
 
+Displays the component elements of a registry file, without traversing
+the current active key structure. This will include elements that are
+associated with but are not actually keys or values. Additionally,
+some of the keys, values, and associated elements displayed
+will no longer be active and may be invalid or 'deleted'.
+
 $script_name <filename> [-d] [-s] [-x]
     -d or --debug       show the technical information for an entry
                         instead of the string representation

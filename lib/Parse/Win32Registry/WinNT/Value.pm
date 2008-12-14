@@ -91,7 +91,6 @@ sub new {
     }
     else {
         $data_inline = 0;
-        # add 4 to skip the initial size dword
         sysseek($regfile, $offset_to_data + 4, 0);
         sysread($regfile, $data, $data_length);
         if (!defined($data) || length($data) != $data_length) {
@@ -103,7 +102,6 @@ sub new {
 
     if ($type == REG_DWORD) {
         if ($data_length != 4) {
-            # a length of 0 is invalid for a DWORD value, but it does occur...
             $data = undef;
         }
     }
@@ -129,13 +127,11 @@ sub get_data {
     die "unexpected error: undefined type" if !defined($type);
 
     my $data = $self->{_data};
-    return if !defined $data;
-
-    my $data_length = $self->{_data_length};
+    return if !defined $data; # e.g. invalid dword data length
 
     # apply decoding to appropriate data types
     if ($type == REG_DWORD) {
-        if ($data_length == 4) {
+        if (length($data) == 4) {
             $data = unpack("V", $data);
         }
         else {

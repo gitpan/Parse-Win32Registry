@@ -15,6 +15,7 @@ WriteMakefile(
     ABSTRACT_FROM   => 'lib/Parse/Win32Registry.pm',
     AUTHOR          => 'James Macfarlane',
     EXE_FILES       => [
+        'bin/regclassnames.pl',
         'bin/regdiff.pl',
         'bin/regdump.pl',
         'bin/regexport.pl',
