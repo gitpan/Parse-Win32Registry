@@ -2,11 +2,11 @@
 use strict;
 use warnings;
 
-binmode(STDOUT, ':utf8');
-
 use File::Basename;
 use Getopt::Long;
-use Parse::Win32Registry qw(:REG_);
+use Parse::Win32Registry 0.40;
+
+binmode(STDOUT, ':utf8');
 
 Getopt::Long::Configure('bundling');
 

@@ -1,16 +1,19 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         Parse-Win32Registry
-version:      0.41
-version_from: lib/Parse/Win32Registry.pm
-installdirs:  site
-requires:
+--- #YAML:1.0
+name:                Parse-Win32Registry
+version:             0.50
+abstract:            Parse Windows Registry Files
+license:             ~
+author:              
+    - James Macfarlane
+generated_by:        ExtUtils::MakeMaker version 6.42
+distribution_type:   module
+requires:     
     Carp:                          0
     Data::Dumper:                  0
     Encode:                        0
     File::Basename:                0
     Test::More:                    0
     Time::Local:                   0
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.30_01
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.3.html
+    version: 1.3

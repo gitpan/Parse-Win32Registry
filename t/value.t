@@ -3,13 +3,13 @@ use warnings;
 
 use Test::More 'no_plan';
 use Data::Dumper;
-use Parse::Win32Registry qw(:REG_);
+use Parse::Win32Registry 0.50 qw(:REG_);
 
 $Data::Dumper::Useqq = 1;
 $Data::Dumper::Terse = 1;
 $Data::Dumper::Indent = 0;
 
-local $SIG{__WARN__} = sub { }; # quietly eat errors
+Parse::Win32Registry::disable_warnings;
 
 sub find_file
 {
@@ -22,6 +22,8 @@ sub run_value_tests
     my $key = shift;
     my @tests = @_;
 
+    my ($os) = ref($key) =~ /Win(NT|95)/;
+
     foreach my $test (@tests) {
         my $name = $test->{name};
         my $type = $test->{type};
@@ -32,44 +34,58 @@ sub run_value_tests
         my $data_as_string = $test->{data_as_string};
         my $as_regedit_export = $test->{as_regedit_export};
 
+        my $desc = "$os " . Dumper($name);
+
         my $value = $key->get_value($name);
-        ok(defined($value), "value $name defined");
-        is($value->get_name, $name, 'get_name eq ' . Dumper($name));
-        is($value->get_type, $type, "get_type == $type");
+        ok(defined($value), "$desc value defined (valid value)");
+        is($value->get_name, $name, "$desc get_name eq " . Dumper($name));
+        is($value->get_type, $type, "$desc get_type == $type");
         is($value->get_type_as_string, $type_as_string,
-            "get_type_as_string eq '$type_as_string'");
+            "$desc get_type_as_string eq '$type_as_string'");
         if (defined($data)) {
             if ($type == REG_DWORD) {
-                cmp_ok($value->get_data, '==', $data, "get_data == $data");
+                cmp_ok($value->get_data, '==', $data,
+                    "$desc get_data == $data");
+                cmp_ok($key->get_value_data($name), '==', $data,
+                    "$desc get_value_data == $data");
             }
             else {
-                is($value->get_data, $data, 'get_data eq ' . Dumper($data));
+                is($value->get_data, $data,
+                    "$desc get_data eq " . Dumper($data));
+                is($key->get_value_data($name), $data,
+                    "$desc get_value_data eq " . Dumper($data));
             }
         }
         else {
-            ok(!defined($value->get_data), 'get_data undefined');
+            ok(!defined($value->get_data),
+                "$desc get_data undefined (invalid data)");
+            ok(!defined($key->get_value_data($name)),
+                "$desc get_value_data undefined (invalid data)");
         }
         if (defined($raw_data)) {
             is($value->get_raw_data, $raw_data,
-                'get_raw_data eq ' . Dumper($raw_data))
+                "$desc get_raw_data eq " . Dumper($raw_data))
                 or diag Dumper($value->get_raw_data);
         }
         else {
-            ok(!defined($value->get_raw_data), 'get_raw_data undefined')
+            ok(!defined($value->get_raw_data),
+                "$desc get_raw_data undefined (invalid data)")
                 or diag Dumper($value->get_raw_data);
         }
         if (defined($list_data)) {
             is_deeply([$value->get_data], $list_data,
-                'get_data eq ' . Dumper($data) . " (list context)");
+                "$desc (array) get_data eq " . Dumper($data))
+                or diag Dumper([$value->get_data]);
         }
         is($value->get_data_as_string, $data_as_string,
-            'get_data_as_string eq ' . Dumper($data_as_string));
+            "$desc get_data_as_string eq " . Dumper($data_as_string));
         my $name_or_default = $name eq '' ? '(Default)' : $name;
         my $value_as_string
             = "$name_or_default ($type_as_string) = $data_as_string";
         is($value->as_string, $value_as_string,
-            'as_string eq ' . Dumper($value_as_string));
-        is($value->as_regedit_export, $as_regedit_export, 'as_regedit_export');
+            "$desc as_string");
+        is($value->as_regedit_export, $as_regedit_export,
+            "$desc as_regedit_export");
     }
 }
 
@@ -91,7 +107,7 @@ sub run_value_tests
 
     my @tests = (
         {
-            name => 'sz1', 
+            name => 'sz1',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => 'www.perl.com',
@@ -100,7 +116,7 @@ sub run_value_tests
             raw_data => "www.perl.com",
         },
         {
-            name => 'sz2', 
+            name => 'sz2',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => 'www.perl.com',
@@ -109,7 +125,7 @@ sub run_value_tests
             raw_data => "www.perl.com\0",
         },
         {
-            name => 'sz3', 
+            name => 'sz3',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => '',
@@ -118,7 +134,7 @@ sub run_value_tests
             raw_data => "",
         },
         {
-            name => 'sz4', 
+            name => 'sz4',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => '',
@@ -127,7 +143,7 @@ sub run_value_tests
             raw_data => "\0",
         },
         {
-            name => 'binary1', 
+            name => 'binary1',
             type => REG_BINARY,
             type_as_string => 'REG_BINARY',
             data => "\x01\x02\x03\x04\x05\x06\x07\x08",
@@ -136,7 +152,7 @@ sub run_value_tests
             raw_data => "\x01\x02\x03\x04\x05\x06\x07\x08",
         },
         {
-            name => 'binary2', 
+            name => 'binary2',
             type => REG_BINARY,
             type_as_string => 'REG_BINARY',
             data => '',
@@ -145,7 +161,7 @@ sub run_value_tests
             raw_data => "",
         },
         {
-            name => 'dword1', 
+            name => 'dword1',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 67305985,
@@ -154,34 +170,34 @@ sub run_value_tests
             raw_data => "\x01\x02\x03\x04",
         },
         {
-            name => 'dword2', 
+            name => 'dword2',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => undef,
             data_as_string => '(invalid data)',
             as_regedit_export => qq{"dword2"=dword:\n},
-            raw_data => undef,
+            raw_data => "\x01\x02\x03\x04\x05\x06",
         },
         {
-            name => 'dword3', 
+            name => 'dword3',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => undef,
             data_as_string => '(invalid data)',
             as_regedit_export => qq{"dword3"=dword:\n},
-            raw_data => undef,
+            raw_data => "\x01\x02",
         },
         {
-            name => 'dword4', 
+            name => 'dword4',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => undef,
             data_as_string => '(invalid data)',
             as_regedit_export => qq{"dword4"=dword:\n},
-            raw_data => undef,
+            raw_data => "",
         },
         {
-            name => 'dword5', 
+            name => 'dword5',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0,
@@ -190,7 +206,7 @@ sub run_value_tests
             raw_data => "\x00\x00\x00\x00",
         },
         {
-            name => 'dword6', 
+            name => 'dword6',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0x7fffffff,
@@ -199,7 +215,7 @@ sub run_value_tests
             raw_data => "\xff\xff\xff\x7f",
         },
         {
-            name => 'dword7', 
+            name => 'dword7',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0x80000000,
@@ -208,7 +224,7 @@ sub run_value_tests
             raw_data => "\x00\x00\x00\x80",
         },
         {
-            name => 'dword8', 
+            name => 'dword8',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0xffffffff,
@@ -217,18 +233,17 @@ sub run_value_tests
             raw_data => "\xff\xff\xff\xff",
         },
         {
-            name => 'multi_sz1', 
+            name => 'multi_sz1',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde fghij klmno",
             list_data => ['abcde', 'fghij', 'klmno'],
             data_as_string => '[0] abcde [1] fghij [2] klmno',
             as_regedit_export => qq{"multi_sz1"=hex(7):61,00,62,00,63,00,64,00,65,00,00,00,66,00,67,00,68,00,69,00,\\\n  6a,00,00,00,6b,00,6c,00,6d,00,6e,00,6f,00,00,00,00,00\n},
-            raw_data => "a\0b\0c\0d\0e\0\0\0f\0g\0h\0i\0j\0\0\0k\0l\0m\0n\0o\0\0\0\0\0",
             raw_data => "abcde\0fghij\0klmno\0\0",
         },
         {
-            name => 'multi_sz2', 
+            name => 'multi_sz2',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde fghij klmno",
@@ -238,18 +253,17 @@ sub run_value_tests
             raw_data => "abcde\0fghij\0klmno\0",
         },
         {
-            name => 'multi_sz3', 
+            name => 'multi_sz3',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde fghij klmno",
             list_data => ['abcde', 'fghij', 'klmno'],
             data_as_string => '[0] abcde [1] fghij [2] klmno',
             as_regedit_export => qq{"multi_sz3"=hex(7):61,00,62,00,63,00,64,00,65,00,00,00,66,00,67,00,68,00,69,00,\\\n  6a,00,00,00,6b,00,6c,00,6d,00,6e,00,6f,00\n},
-            raw_data => "a\0b\0c\0d\0e\0\0\0f\0g\0h\0i\0j\0\0\0k\0l\0m\0n\0o\0",
             raw_data => "abcde\0fghij\0klmno",
         },
         {
-            name => 'multi_sz4', 
+            name => 'multi_sz4',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde  klmno",
@@ -259,7 +273,7 @@ sub run_value_tests
             raw_data => "abcde\0\0klmno\0\0",
         },
         {
-            name => 'multi_sz5', 
+            name => 'multi_sz5',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde  klmno",
@@ -269,7 +283,7 @@ sub run_value_tests
             raw_data => "abcde\0\0klmno\0",
         },
         {
-            name => 'multi_sz6', 
+            name => 'multi_sz6',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde  klmno",
@@ -279,7 +293,7 @@ sub run_value_tests
             raw_data => "abcde\0\0klmno",
         },
         {
-            name => 'multi_sz7', 
+            name => 'multi_sz7',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde",
@@ -289,7 +303,7 @@ sub run_value_tests
             raw_data => "abcde\0\0",
         },
         {
-            name => 'multi_sz8', 
+            name => 'multi_sz8',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde",
@@ -299,7 +313,7 @@ sub run_value_tests
             raw_data => "abcde\0",
         },
         {
-            name => 'multi_sz9', 
+            name => 'multi_sz9',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde",
@@ -309,7 +323,7 @@ sub run_value_tests
             raw_data => "abcde",
         },
         {
-            name => 'multi_sz10', 
+            name => 'multi_sz10',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "",
@@ -319,7 +333,7 @@ sub run_value_tests
             raw_data => "\0\0",
         },
         {
-            name => 'multi_sz11', 
+            name => 'multi_sz11',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "",
@@ -329,7 +343,7 @@ sub run_value_tests
             raw_data => "\0",
         },
         {
-            name => 'multi_sz12', 
+            name => 'multi_sz12',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "",
@@ -339,7 +353,7 @@ sub run_value_tests
             raw_data => "",
         },
         {
-            name => 'type500', 
+            name => 'type500',
             type => 500,
             type_as_string => 'REG_500',
             data => "\x01\x02\x03\x04",
@@ -348,7 +362,7 @@ sub run_value_tests
             raw_data => "\x01\x02\x03\x04",
         },
         {
-            name => '', 
+            name => '',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0,
@@ -357,7 +371,7 @@ sub run_value_tests
             raw_data => "\x00\x00\x00\x00",
         },
         {
-            name => '0', 
+            name => '0',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0,
@@ -366,7 +380,7 @@ sub run_value_tests
             raw_data => "\x00\x00\x00\x00",
         },
         {
-            name => "\0", 
+            name => "\0",
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0,
@@ -375,7 +389,7 @@ sub run_value_tests
             raw_data => "\x00\x00\x00\x00",
         },
         {
-            name => "\0name", 
+            name => "\0name",
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0,
@@ -404,7 +418,7 @@ sub run_value_tests
 
     my @tests = (
         {
-            name => 'sz1', 
+            name => 'sz1',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => 'www.perl.com',
@@ -413,7 +427,7 @@ sub run_value_tests
             raw_data => "w\0w\0w\0.\0p\0e\0r\0l\0.\0c\0o\0m\0",
         },
         {
-            name => 'sz2', 
+            name => 'sz2',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => 'www.perl.com',
@@ -422,7 +436,7 @@ sub run_value_tests
             raw_data => "w\0w\0w\0.\0p\0e\0r\0l\0.\0c\0o\0m\0\0\0",
         },
         {
-            name => 'sz3', 
+            name => 'sz3',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => '',
@@ -431,7 +445,7 @@ sub run_value_tests
             raw_data => "",
         },
         {
-            name => 'sz4', 
+            name => 'sz4',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => '',
@@ -440,7 +454,7 @@ sub run_value_tests
             raw_data => "\0\0",
         },
         {
-            name => 'sz5', 
+            name => 'sz5',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => 'ab',
@@ -449,7 +463,7 @@ sub run_value_tests
             raw_data => "a\0b\0",
         },
         {
-            name => 'sz6', 
+            name => 'sz6',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => 'a',
@@ -458,7 +472,7 @@ sub run_value_tests
             raw_data => "a\0\0\0",
         },
         {
-            name => 'sz7', 
+            name => 'sz7',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => '',
@@ -467,7 +481,7 @@ sub run_value_tests
             raw_data => "",
         },
         {
-            name => 'sz8', 
+            name => 'sz8',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
             data => '',
@@ -475,9 +489,8 @@ sub run_value_tests
             as_regedit_export => qq{"sz8"=""\n},
             raw_data => "\0\0",
         },
-        # sz9 (inline length too long)
         {
-            name => 'binary1', 
+            name => 'binary1',
             type => REG_BINARY,
             type_as_string => 'REG_BINARY',
             data => "\x01\x02\x03\x04\x05\x06\x07\x08",
@@ -486,7 +499,7 @@ sub run_value_tests
             raw_data => "\x01\x02\x03\x04\x05\x06\x07\x08",
         },
         {
-            name => 'binary2', 
+            name => 'binary2',
             type => REG_BINARY,
             type_as_string => 'REG_BINARY',
             data => '',
@@ -495,7 +508,7 @@ sub run_value_tests
             raw_data => "",
         },
         {
-            name => 'binary3', 
+            name => 'binary3',
             type => REG_BINARY,
             type_as_string => 'REG_BINARY',
             data => "\x01\x02\x03\x04",
@@ -504,7 +517,7 @@ sub run_value_tests
             raw_data => "\x01\x02\x03\x04",
         },
         {
-            name => 'binary4', 
+            name => 'binary4',
             type => REG_BINARY,
             type_as_string => 'REG_BINARY',
             data => '',
@@ -512,9 +525,8 @@ sub run_value_tests
             as_regedit_export => qq{"binary4"=hex:\n},
             raw_data => "",
         },
-        # binary5 (inline length too long)
         {
-            name => 'dword1', 
+            name => 'dword1',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 67305985,
@@ -523,34 +535,34 @@ sub run_value_tests
             raw_data => "\x01\x02\x03\x04",
         },
         {
-            name => 'dword2', 
+            name => 'dword2',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => undef,
             data_as_string => '(invalid data)',
             as_regedit_export => qq{"dword2"=dword:\n},
-            raw_data => undef,
+            raw_data => "\x01\x02\x03\x04\x05\x06",
         },
         {
-            name => 'dword3', 
+            name => 'dword3',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => undef,
             data_as_string => '(invalid data)',
             as_regedit_export => qq{"dword3"=dword:\n},
-            raw_data => undef,
+            raw_data => "\x01\x02",
         },
         {
-            name => 'dword4', 
+            name => 'dword4',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => undef,
             data_as_string => '(invalid data)',
             as_regedit_export => qq{"dword4"=dword:\n},
-            raw_data => undef,
+            raw_data => "",
         },
         {
-            name => 'dword5', 
+            name => 'dword5',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 67305985,
@@ -559,7 +571,7 @@ sub run_value_tests
             raw_data => "\x01\x02\x03\x04",
         },
         {
-            name => 'dword6', 
+            name => 'dword6',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => undef,
@@ -568,25 +580,25 @@ sub run_value_tests
             raw_data => undef,
         },
         {
-            name => 'dword7', 
+            name => 'dword7',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => undef,
             data_as_string => '(invalid data)',
             as_regedit_export => qq{"dword7"=dword:\n},
-            raw_data => undef,
+            raw_data => "\x01\x02",
         },
         {
-            name => 'dword8', 
+            name => 'dword8',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => undef,
             data_as_string => '(invalid data)',
             as_regedit_export => qq{"dword8"=dword:\n},
-            raw_data => undef,
+            raw_data => "",
         },
         {
-            name => 'dword9', 
+            name => 'dword9',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0,
@@ -595,7 +607,7 @@ sub run_value_tests
             raw_data => "\x00\x00\x00\x00",
         },
         {
-            name => 'dword10', 
+            name => 'dword10',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0x7fffffff,
@@ -604,7 +616,7 @@ sub run_value_tests
             raw_data => "\xff\xff\xff\x7f",
         },
         {
-            name => 'dword11', 
+            name => 'dword11',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0x80000000,
@@ -613,7 +625,7 @@ sub run_value_tests
             raw_data => "\x00\x00\x00\x80",
         },
         {
-            name => 'dword12', 
+            name => 'dword12',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0xffffffff,
@@ -622,7 +634,7 @@ sub run_value_tests
             raw_data => "\xff\xff\xff\xff",
         },
         {
-            name => 'multi_sz1', 
+            name => 'multi_sz1',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde fghij klmno",
@@ -632,7 +644,7 @@ sub run_value_tests
             raw_data => "a\0b\0c\0d\0e\0\0\0f\0g\0h\0i\0j\0\0\0k\0l\0m\0n\0o\0\0\0\0\0",
         },
         {
-            name => 'multi_sz2', 
+            name => 'multi_sz2',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde fghij klmno",
@@ -642,7 +654,7 @@ sub run_value_tests
             raw_data => "a\0b\0c\0d\0e\0\0\0f\0g\0h\0i\0j\0\0\0k\0l\0m\0n\0o\0\0\0",
         },
         {
-            name => 'multi_sz3', 
+            name => 'multi_sz3',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde fghij klmno",
@@ -652,7 +664,7 @@ sub run_value_tests
             raw_data => "a\0b\0c\0d\0e\0\0\0f\0g\0h\0i\0j\0\0\0k\0l\0m\0n\0o\0",
         },
         {
-            name => 'multi_sz4', 
+            name => 'multi_sz4',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde  klmno",
@@ -662,7 +674,7 @@ sub run_value_tests
             raw_data => "a\0b\0c\0d\0e\0\0\0\0\0k\0l\0m\0n\0o\0\0\0\0\0",
         },
         {
-            name => 'multi_sz5', 
+            name => 'multi_sz5',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde  klmno",
@@ -672,7 +684,7 @@ sub run_value_tests
             raw_data => "a\0b\0c\0d\0e\0\0\0\0\0k\0l\0m\0n\0o\0\0\0",
         },
         {
-            name => 'multi_sz6', 
+            name => 'multi_sz6',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde  klmno",
@@ -682,7 +694,7 @@ sub run_value_tests
             raw_data => "a\0b\0c\0d\0e\0\0\0\0\0k\0l\0m\0n\0o\0",
         },
         {
-            name => 'multi_sz7', 
+            name => 'multi_sz7',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde",
@@ -692,7 +704,7 @@ sub run_value_tests
             raw_data => "a\0b\0c\0d\0e\0\0\0\0\0",
         },
         {
-            name => 'multi_sz8', 
+            name => 'multi_sz8',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde",
@@ -702,7 +714,7 @@ sub run_value_tests
             raw_data => "a\0b\0c\0d\0e\0\0\0",
         },
         {
-            name => 'multi_sz9', 
+            name => 'multi_sz9',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "abcde",
@@ -712,7 +724,7 @@ sub run_value_tests
             raw_data => "a\0b\0c\0d\0e\0",
         },
         {
-            name => 'multi_sz10', 
+            name => 'multi_sz10',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "",
@@ -722,7 +734,7 @@ sub run_value_tests
             raw_data => "\0\0\0\0",
         },
         {
-            name => 'multi_sz11', 
+            name => 'multi_sz11',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "",
@@ -732,7 +744,7 @@ sub run_value_tests
             raw_data => "\0\0",
         },
         {
-            name => 'multi_sz12', 
+            name => 'multi_sz12',
             type => REG_MULTI_SZ,
             type_as_string => 'REG_MULTI_SZ',
             data => "",
@@ -742,7 +754,7 @@ sub run_value_tests
             raw_data => "",
         },
         {
-            name => 'type500', 
+            name => 'type500',
             type => 500,
             type_as_string => 'REG_500',
             data => "\x01\x02\x03\x04",
@@ -751,7 +763,7 @@ sub run_value_tests
             raw_data => "\x01\x02\x03\x04",
         },
         {
-            name => '', 
+            name => '',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0,
@@ -760,7 +772,7 @@ sub run_value_tests
             raw_data => "\x00\x00\x00\x00",
         },
         {
-            name => '0', 
+            name => '0',
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0,
@@ -769,7 +781,7 @@ sub run_value_tests
             raw_data => "\x00\x00\x00\x00",
         },
         {
-            name => "\0", 
+            name => "\0",
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0,
@@ -778,7 +790,7 @@ sub run_value_tests
             raw_data => "\x00\x00\x00\x00",
         },
         {
-            name => "\0name", 
+            name => "\0name",
             type => REG_DWORD,
             type_as_string => 'REG_DWORD',
             data => 0,

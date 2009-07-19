@@ -10,6 +10,7 @@ use Encode;
 use Parse::Win32Registry::Base qw(:all);
 
 use constant OFFSET_TO_FIRST_HBIN => 0x1000;
+use constant VK_HEADER_LENGTH => 0x18;
 
 sub new {
     my $class = shift;
@@ -17,34 +18,41 @@ sub new {
     my $offset = shift; # offset to vk record relative to first hbin
     my $parent_key_path = shift; # parent key path (for errors)
 
-    die "unexpected error: undefined regfile" unless defined $regfile;
-    die "unexpected error: undefined offset" unless defined $offset;
+    croak "Missing registry file" if !defined $regfile;
+    croak "Missing offset" if !defined $offset;
 
     # when errors are encountered
-    my $whereabouts = (defined $parent_key_path)
-                    ? " (a value of $parent_key_path)"
+    my $whereabouts = defined($parent_key_path)
+                    ? " (a value of '$parent_key_path')"
                     : "";
 
-    # 0x00 dword = size (as negative number)
+    if (0) {
+        printf("NEW VALUE at 0x%x%s\n", $offset, $whereabouts);
+    }
+
+    my $fh = $regfile->{_filehandle};
+    croak "Missing filehandle" if !defined $fh;
+
+    # 0x00 dword = value length (as negative number)
     # 0x04 word  = 'vk' signature
     # 0x06 word  = value name length
     # 0x08 dword = length of data (bit 31 set => data stored inline)
-    # 0x0c dword = offset of data
+    # 0x0c dword = offset to data/inline data
     # 0x10 dword = type of data
     # 0x14 word  = flag (bit 0 set = name present, unset = default)
     # 0x16 word
     # 0x18       = value name [for name length bytes]
 
     # Extracted offsets are always relative to first HBIN
-    
-    sysseek($regfile, $offset, 0);
-    sysread($regfile, my $vk_header, 0x18);
-    if (!defined($vk_header) || length($vk_header) != 0x18) {
-        log_error("Could not read value at 0x%x%s", $offset, $whereabouts);
+
+    sysseek($fh, $offset, 0);
+    my $bytes_read = sysread($fh, my $vk_header, VK_HEADER_LENGTH);
+    if ($bytes_read != VK_HEADER_LENGTH) {
+        warnf("Could not read value at 0x%x%s", $offset, $whereabouts);
         return;
     }
 
-    my ($size,
+    my ($length,
         $sig,
         $name_length,
         $data_length,
@@ -53,55 +61,56 @@ sub new {
         $name_present_flag,
         ) = unpack("Va2vVVVv", $vk_header);
 
-    $offset_to_data += OFFSET_TO_FIRST_HBIN
-        if $offset_to_data != 0xffffffff;
+    my $allocated = 0;
+    if ($length > 0x7fffffff) {
+        $allocated = 1;
+        $length = (0xffffffff - $length) + 1;
+    }
+    # allocated should be true
 
     if ($sig ne "vk") {
-        log_error("Invalid value signature at 0x%x%s", $offset, $whereabouts);
+        warnf("Invalid signature for value at 0x%x%s", $offset, $whereabouts);
         return;
     }
 
     my $name = "";
     if ($name_present_flag & 1) {
-        sysread($regfile, $name, $name_length);
-        if (!defined($name) || length($name) != $name_length) {
-            log_error("Could not read value name at 0x%x%s", 
+        $bytes_read = sysread($fh, $name, $name_length);
+        if ($bytes_read != $name_length) {
+            warnf("Could not read name for value at 0x%x%s",
                 $offset, $whereabouts);
             return;
         }
     }
 
-    # If the top bit of the data_length is set, then
-    # the value is inline and stored in the offset field (at 0xc).
     my $data;
-    my $data_inline;
-    if ($data_length & 0x80000000) {
-        $data_inline = 1;
+
+    # If the top bit of the data_length is set, then
+    # the value is inline and stored in the offset to data field (at 0xc).
+    my $data_inline = $data_length >> 31;
+    if ($data_inline) {
         # REG_DWORDs are always inline, but I've also seen
         # REG_SZ, REG_BINARY, REG_EXPAND_SZ, and REG_NONE inline
         $data_length &= 0x7fffffff;
         if ($data_length > 4) {
-            log_error("Invalid inline data length for value '%s' at 0x%x%s", 
+            warnf("Invalid inline data length for value '%s' at 0x%x%s",
                 $name, $offset, $whereabouts);
             $data = undef;
         }
         else {
+            # unpack inline data from header
             $data = substr($vk_header, 0xc, $data_length);
         }
     }
     else {
-        $data_inline = 0;
-        sysseek($regfile, $offset_to_data + 4, 0);
-        sysread($regfile, $data, $data_length);
-        if (!defined($data) || length($data) != $data_length) {
-            log_error("Could not read data at 0x%x for value '%s' at 0x%x%s",
-                $offset_to_data, $name, $offset, $whereabouts);
-            return;
-        }
-    }
+        $offset_to_data += OFFSET_TO_FIRST_HBIN
+            if $offset_to_data != 0xffffffff;
 
-    if ($type == REG_DWORD) {
-        if ($data_length != 4) {
+        sysseek($fh, $offset_to_data + 4, 0);
+        $bytes_read = sysread($fh, $data, $data_length);
+        if ($bytes_read != $data_length) {
+            warnf("Could not read data at 0x%x for value '%s' at 0x%x%s",
+                $offset_to_data, $name, $offset, $whereabouts);
             $data = undef;
         }
     }
@@ -109,6 +118,9 @@ sub new {
     my $self = {};
     $self->{_regfile} = $regfile;
     $self->{_offset} = $offset;
+    $self->{_length} = $length;
+    $self->{_allocated} = $allocated;
+    $self->{_tag} = $sig;
     $self->{_name} = $name;
     $self->{_type} = $type;
     $self->{_data} = $data;
@@ -123,11 +135,11 @@ sub new {
 sub get_data {
     my $self = shift;
 
-    my $type = $self->{_type};
-    die "unexpected error: undefined type" if !defined($type);
+    my $type = $self->get_type;
+    croak "Missing type" if !defined $type;
 
     my $data = $self->{_data};
-    return if !defined $data; # e.g. invalid dword data length
+    return if !defined $data;
 
     # apply decoding to appropriate data types
     if ($type == REG_DWORD) {
@@ -140,19 +152,25 @@ sub get_data {
         }
     }
     elsif ($type == REG_SZ || $type == REG_EXPAND_SZ) {
-        # handle unicode encoding 
+        # handle unicode encoding
         $data = decode("UCS-2LE", $data);
 
         # snip off any terminating null
-        my $last_char = substr($data, -1, 1);
-        if (ord($last_char) == 0) {
-            $data = substr($data, 0, length($data) - 1);
+        if (substr($data, -1, 1) eq "\x00") {
+            chop $data;
         }
     }
     elsif ($type == REG_MULTI_SZ) {
-        my @s = unpack_unicode_string($data);
-        pop @s if @s > 1 && $s[-1] eq ''; # drop trailing empty string
-        return wantarray ? @s : join($", @s);
+        my @multi_sz = ();
+        my $pos = 0;
+        do {
+            my ($str, $str_len) = unpack_unicode_string(substr($data, $pos));
+            push @multi_sz, $str;
+            $pos += $str_len;
+        } while ($pos < length($data));
+        # drop trailing empty string (caused by trailing null)
+        pop @multi_sz if @multi_sz > 1 && $multi_sz[-1] eq '';
+        return wantarray ? @multi_sz : join($", @multi_sz);
     }
 
     return $data;
@@ -163,80 +181,60 @@ sub as_regedit_export {
     my $version = shift || 5;
 
     my $name = $self->get_name;
-    my $s = $name eq "" ? "@=" : '"' . $name . '"=';
+    my $export = $name eq "" ? "@=" : '"' . $name . '"=';
 
     my $type = $self->get_type;
 
     if ($type == REG_SZ) {
-        $s .= '"' . $self->get_data . '"';
-        $s .= "\n";
+        $export .= '"' . $self->get_data . '"';
     }
     elsif ($type == REG_BINARY) {
-        $s .= "hex:";
-        $s .= formatted_octets($self->get_data, length($s));
+        $export .= "hex:";
+        $export .= format_octets($self->get_data, length($export));
     }
     elsif ($type == REG_DWORD) {
         my $data = $self->get_data;
-        $s .= defined($data)
+        $export .= defined($data)
             ? sprintf("dword:%08x", $data)
             : "dword:";
-        $s .= "\n";
     }
     elsif ($type == REG_EXPAND_SZ || $type == REG_MULTI_SZ) {
         my $data = $version == 4
                  ? encode("ascii", $self->{_data}) # unicode->ascii
                  : $self->{_data}; # raw data
-        $s .= sprintf("hex(%x):", $type);
-        $s .= formatted_octets($data, length($s));
+        $export .= sprintf("hex(%x):", $type);
+        $export .= format_octets($data, length($export));
     }
     else {
         my $data = $self->get_data;
-        $s .= sprintf("hex(%x):", $type);
-        $s .= formatted_octets($data, length($s));
+        $export .= sprintf("hex(%x):", $type);
+        $export .= format_octets($data, length($export));
     }
-    return $s;
+    $export .= "\n";
+    return $export;
 }
 
 sub parse_info {
     my $self = shift;
-    my $verbose = shift;
 
-    my $s = sprintf 'vk=0x%x "%s" type=%d (%s)',
+    my $info = sprintf '0x%x,%d,%d vk "%s" type=%d (%s)',
         $self->{_offset},
+        $self->{_allocated},
+        $self->{_length},
         $self->{_name},
-        $self->get_type,
+        $self->{_type},
         $self->get_type_as_string;
-
     if ($self->{_data_inline}) {
-        $s .= sprintf ' data=inline,%d bytes "%s"',
+        $info .= sprintf ' data=inline,%d bytes "%s"',
             $self->{_data_length},
             $self->get_data_as_string;
     }
     else {
-        $s .= sprintf ' | data=0x%x,%d bytes',
+        $info .= sprintf ' | data=0x%x,%d bytes',
             $self->{_offset_to_data},
             $self->{_data_length};
     }
+    return $info;
 }
-
-sub as_hexdump {
-    my $self = shift;
-    my $regfile = $self->{_regfile};
-
-    my $hexdump = '';
-
-    sysseek($regfile, $self->{_offset}, 0);
-    sysread($regfile, my $buffer, 0x18 + length($self->{_name}));
-    $hexdump .= hexdump($buffer, $self->{_offset});
-
-    if (!$self->{_data_inline}) {
-        sysseek($regfile, $self->{_offset_to_data}, 0);
-        sysread($regfile, my $buffer, 0x4 + length($self->{_data}));
-        $hexdump .= hexdump($buffer, $self->{_offset_to_data});
-    }
-
-    return $hexdump;
-}
-
 
 1;

@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-use Parse::Win32Registry qw(
+use Parse::Win32Registry 0.50 qw(
     REG_NONE
     REG_SZ
     REG_EXPAND_SZ

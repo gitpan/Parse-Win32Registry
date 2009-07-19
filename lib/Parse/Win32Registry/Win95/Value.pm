@@ -9,34 +9,39 @@ use Carp;
 use Encode;
 use Parse::Win32Registry::Base qw(:all);
 
+use constant RGDB_VALUE_HEADER_LENGTH => 0xc;
+
 sub new {
     my $class = shift;
     my $regfile = shift;
     my $offset = shift; # offset to RGDB value entry
     my $parent_key_path = shift; # parent key path (for errors)
 
-    die "unexpected error: undefined regfile" unless defined $regfile;
-    die "unexpected error: undefined offset" unless defined $offset;
+    croak "Missing registry file" if !defined $regfile;
+    croak "Missing offset" if !defined $offset;
 
     # when errors are encountered
-    my $whereabouts = (defined $parent_key_path)
-                    ? " (a value of $parent_key_path)"
+    my $whereabouts = defined($parent_key_path)
+                    ? " (a value of '$parent_key_path')"
                     : "";
 
-	# RGDB Value Entry
-	# 0x00 dword = value type
-	# 0x04
-	# 0x08 word  = value name length
-	# 0x0a word  = value data length
-	# 0x0c       = value name [for name length bytes]
-	#            + value data [for data length bytes]
-    # Value type may just be a word, not a dword.
-    # Following word appears to be zero.
+    my $fh = $regfile->{_filehandle};
+    croak "Missing filehandle" if !defined $fh;
 
-	sysseek($regfile, $offset, 0);
-    sysread($regfile, my $rgdb_value_entry, 12);
-    if (!defined($rgdb_value_entry) || length($rgdb_value_entry) != 12) {
-        log_error("Could not read RGDB entry for value at 0x%x%s",
+    # RGDB Value Entry
+    # 0x00 dword = value type
+    # 0x04
+    # 0x08 word  = value name length
+    # 0x0a word  = value data length
+    # 0x0c       = value name [for name length bytes]
+    #            + value data [for data length bytes]
+    # Value type may just be a word, not a dword;
+    # following word always appears to be zero.
+
+	sysseek($fh, $offset, 0);
+    my $bytes_read = sysread($fh, my $rgdb_value_entry, RGDB_VALUE_HEADER_LENGTH);
+    if ($bytes_read != RGDB_VALUE_HEADER_LENGTH) {
+        warnf("Could not read RGDB value at 0x%x%s",
             $offset, $whereabouts);
         return;
     }
@@ -45,33 +50,30 @@ sub new {
         $name_length,
         $data_length) = unpack("Vx4vv", $rgdb_value_entry);
 
-    sysread($regfile, my $name, $name_length);
-    if (!defined($name) || length($name) != $name_length) {
-        log_error("Could not read RGDB entry name for value at 0x%x%s",
+    $bytes_read = sysread($fh, my $name, $name_length);
+    if ($bytes_read != $name_length) {
+        warnf("Could not read name for RGDB value at 0x%x%s",
             $offset, $whereabouts);
         return;
     }
 
-    sysread($regfile, my $data, $data_length);
-    if (!defined($data) || length($data) != $data_length) {
-        log_error("Could not read RGDB entry data for value at 0x%x%s",
+    $bytes_read = sysread($fh, my $data, $data_length);
+    if ($bytes_read != $data_length) {
+        warnf("Could not read data for RGDB value at 0x%x%s",
             $offset, $whereabouts);
         return;
-    }
-
-    if ($type == REG_DWORD) {
-        if ($data_length != 4) {
-            $data = undef;
-        }
     }
 
     my $self = {};
     $self->{_regfile} = $regfile;
     $self->{_offset} = $offset;
+    $self->{_length} = RGDB_VALUE_HEADER_LENGTH + $name_length + $data_length;
+    $self->{_allocated} = 0;
+    $self->{_tag} = 'rgdb';
     $self->{_name} = $name;
     $self->{_type} = $type;
     $self->{_data} = $data;
-    $self->{_size} = length($rgdb_value_entry) + $name_length + $data_length;
+    $self->{_data_length} = $data_length;
     bless $self, $class;
 
     return $self;
@@ -80,12 +82,12 @@ sub new {
 sub get_data {
     my $self = shift;
 
-    my $type = $self->{_type};
-    die "unexpected error: undefined type" if !defined($type);
+    my $type = $self->get_type;
+    croak "Missing type" if !defined $type;
 
     my $data = $self->{_data};
-    return if !defined $data; # e.g. invalid dword data length
-    
+    return if !defined $data;
+
     # apply decoding to appropriate data types
     if ($type == REG_DWORD) {
         if (length($data) == 4) {
@@ -106,9 +108,16 @@ sub get_data {
         }
     }
     elsif ($type == REG_MULTI_SZ) {
-        my @s = unpack_string($data);
-        pop @s if @s > 1 && $s[-1] eq ''; # drop trailing empty string
-        return wantarray ? @s : join($", @s);
+        my @multi_sz = ();
+        my $pos = 0;
+        do {
+            my ($str, $str_len) = unpack_string(substr($data, $pos));
+            push @multi_sz, $str;
+            $pos += $str_len;
+        } while ($pos < length($data));
+        # drop trailing empty string (caused by trailing null)
+        pop @multi_sz if @multi_sz > 1 && $multi_sz[-1] eq '';
+        return wantarray ? @multi_sz : join($", @multi_sz);
     }
 
     return $data;
@@ -119,63 +128,53 @@ sub as_regedit_export {
     my $version = shift || 5;
 
     my $name = $self->get_name;
-    my $s = $name eq '' ? '@=' : '"' . $name . '"=';
+    my $export = $name eq '' ? '@=' : '"' . $name . '"=';
 
     my $type = $self->get_type;
 
     if ($type == REG_SZ) {
-        $s .= '"' . $self->get_data . '"'; # get_data returns a utf8 string
-        $s .= "\n";
+        $export .= '"' . $self->get_data . '"';
     }
     elsif ($type == REG_BINARY) {
-        $s .= 'hex:';
-        $s .= formatted_octets($self->get_data, length($s));
+        $export .= 'hex:';
+        $export .= format_octets($self->get_data, length($export));
     }
     elsif ($type == REG_DWORD) {
         my $data = $self->get_data;
-        $s .= defined($data)
+        $export .= defined($data)
             ? sprintf("dword:%08x", $data)
             : "dword:";
-        $s .= "\n";
     }
     elsif ($type == REG_EXPAND_SZ || $type == REG_MULTI_SZ) {
         my $data = $version == 4
                  ? $self->{_data} # raw data
                  : encode("UCS-2LE", $self->{_data}); # ansi->unicode
-        $s .= sprintf("hex(%x):", $type);
-        $s .= formatted_octets($data, length($s));
+        $export .= sprintf("hex(%x):", $type);
+        $export .= format_octets($data, length($export));
     }
     else {
         my $data = $self->get_data;
-        $s .= sprintf("hex(%x):", $type);
-        $s .= formatted_octets($data, length($s));
+        $export .= sprintf("hex(%x):", $type);
+        $export .= format_octets($data, length($export));
     }
-    return $s;
+    $export .= "\n";
+    return $export;
 }
 
 sub parse_info {
     my $self = shift;
-    my $verbose = shift;
 
-    my $s = sprintf 'rgdb=0x%x "%s" type=%s (%s) data=%d bytes',
+    my $info = sprintf '0x%x,%d rgdb "%s" type=%s (%s) data=%d bytes',
         $self->{_offset},
+        $self->{_length},
         $self->{_name},
-        $self->get_type,
+        $self->{_type},
         $self->get_type_as_string,
-        length($self->{_data});
-}
-
-sub as_hexdump {
-    my $self = shift;
-    my $regfile = $self->{_regfile};
-
-    my $hexdump = '';
-
-    sysseek($regfile, $self->{_offset}, 0);
-    sysread($regfile, my $buffer, $self->{_size});
-    $hexdump .= hexdump($buffer, $self->{_offset});
-
-    return $hexdump;
+        $self->{_data_length};
+    if ($self->{_type} == REG_DWORD) {
+        $info .= sprintf ' "%s"', $self->get_data_as_string;
+    }
+    return $info;
 }
 
 1;

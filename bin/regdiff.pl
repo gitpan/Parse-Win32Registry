@@ -2,11 +2,11 @@
 use strict;
 use warnings;
 
-binmode(STDOUT, ':utf8');
-
 use File::Basename;
 use Getopt::Long;
 use Parse::Win32Registry;
+
+binmode(STDOUT, ':utf8');
 
 Getopt::Long::Configure('bundling');
 
@@ -16,7 +16,7 @@ GetOptions('previous|p' => \my $show_previous,
 my $left_filename = shift or die usage();
 my $right_filename = shift or die usage();
 
-my $initial_key_name = shift;
+my $initial_key_path = shift;
 
 my $left_registry = Parse::Win32Registry->new($left_filename)
     or die "'$left_filename' is not a registry file\n";
@@ -27,14 +27,14 @@ my $left_root_key = $left_registry->get_root_key
 my $right_root_key = $right_registry->get_root_key
     or die "Could not get root key of '$right_filename'\n";
 
-if (defined($initial_key_name)) {
-    $left_root_key = $left_root_key->get_subkey($initial_key_name);
+if (defined($initial_key_path)) {
+    $left_root_key = $left_root_key->get_subkey($initial_key_path);
     if (!defined($left_root_key)) {
-        die "Could not find the key '$initial_key_name' in '$left_filename'\n";
+        die "Could not find the key '$initial_key_path' in '$left_filename'\n";
     }
-    $right_root_key = $right_root_key->get_subkey($initial_key_name);
+    $right_root_key = $right_root_key->get_subkey($initial_key_path);
     if (!defined($right_root_key)) {
-        die "Could not find the key '$initial_key_name' in '$right_filename'\n";
+        die "Could not find the key '$initial_key_path' in '$right_filename'\n";
     }
 }
 
@@ -57,7 +57,7 @@ sub traverse_together {
             $values{$right_value->get_name}{right} = $right_value;
         }
     }
-    
+
     # Count the number of changed values
     my $changed = 0;
     foreach my $value_name (keys %values) {

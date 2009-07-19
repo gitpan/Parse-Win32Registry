@@ -3,6 +3,8 @@ package Parse::Win32Registry::Value;
 use strict;
 use warnings;
 
+use base qw(Parse::Win32Registry::Entry);
+
 use Carp;
 use Parse::Win32Registry::Base qw(:all);
 
@@ -18,29 +20,32 @@ sub get_type {
     return $self->{_type};
 }
 
+our @Types = qw(
+    REG_NONE
+    REG_SZ
+    REG_EXPAND_SZ
+    REG_BINARY
+    REG_DWORD
+    REG_DWORD_BIG_ENDIAN
+    REG_LINK
+    REG_MULTI_SZ
+    REG_RESOURCE_LIST
+    REG_FULL_RESOURCE_DESCRIPTOR
+    REG_RESOURCE_REQUIREMENTS_LIST
+    REG_QWORD
+);
+
 sub get_type_as_string {
     my $self = shift;
 
-    my @types = qw(
-        REG_NONE
-        REG_SZ
-        REG_EXPAND_SZ
-        REG_BINARY
-        REG_DWORD
-        REG_DWORD_BIG_ENDIAN
-        REG_LINK
-        REG_MULTI_SZ
-        REG_RESOURCE_LIST
-        REG_FULL_RESOURCE_DESCRIPTOR
-        REG_RESOURCE_REQUIREMENTS_LIST
-        REG_QWORD
-    );
-    if (my $type_as_string = $types[$self->{_type}]) {
-        return $type_as_string;
+    my $type = $self->get_type;
+    if (exists $Types[$type]) {
+        return $Types[$type];
     }
     else {
         # Return unrecognised types as REG_<number>
-        return "REG_$self->{_type}";
+        # REGEDIT displays them as formatted hex numbers, e.g. 0x1f4
+        return "REG_$type";
     }
 }
 
@@ -75,12 +80,6 @@ sub get_raw_data {
     my $self = shift;
 
     return $self->{_data};
-}
-
-sub get_data_as_hexdump {
-    my $self = shift;
-
-    return hexdump($self->{_data});
 }
 
 sub as_string {

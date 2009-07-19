@@ -3,6 +3,8 @@ package Parse::Win32Registry::Key;
 use strict;
 use warnings;
 
+use base qw(Parse::Win32Registry::Entry);
+
 use Carp;
 
 sub get_name {
@@ -10,22 +12,20 @@ sub get_name {
 
     # the root key of a windows 95 registry has no defined name
     # but this should be set to "" when created
-    die "unexpected error: undefined name" if !defined($self->{_name});
-
     return $self->{_name};
 }
 
 sub get_path {
     my $self = shift;
 
-    die "unexpected error: undefined path" if !defined($self->{_key_path});
-
     return $self->{_key_path};
 }
 
-sub _lookup_subkey {
+sub _look_up_subkey {
     my $self = shift;
     my $subkey_name = shift;
+
+    croak "Missing subkey name" if !defined $subkey_name;
 
     foreach my $subkey ($self->get_list_of_subkeys) {
         if (uc $subkey_name eq uc $subkey->{_name}) {
@@ -38,23 +38,27 @@ sub _lookup_subkey {
 sub get_subkey {
     my $self = shift;
     my $subkey_path = shift;
-    
+
     # check for definedness in case key name is '' or '0'
-    croak "No subkey name specified for get_subkey" if !defined($subkey_path);
+    croak "Usage: get_subkey('key name')" if !defined $subkey_path;
 
     my $key = $self;
 
     # Current path component separator is '\' to match that used in Windows.
     # split returns nothing if it is given an empty string,
     # and without a limit of -1 drops trailing empty fields.
+    # The following returns a list with a single zero-length string ("")
+    # for an empty string, as split(/\\/, $subkey_path, -1) returns (),
+    # an empty list.
     my @path_components = index($subkey_path, "\\") == -1
                         ? ($subkey_path)
                         : split(/\\/, $subkey_path, -1);
-    foreach my $component (@path_components) {
-        if (my $subkey = $key->_lookup_subkey($component)) {
+
+    foreach my $subkey_name (@path_components) {
+        if (my $subkey = $key->_look_up_subkey($subkey_name)) {
             $key = $subkey;
         }
-        else { # we can stop looking
+        else { # subkey name not found, abort look up
             return;
         }
     }
@@ -66,7 +70,7 @@ sub get_value {
     my $value_name = shift;
 
     # check for definedness in case value name is '' or '0'
-    croak "No value name specified for get_value" if !defined($value_name);
+    croak "Usage: get_value('value name')" if !defined $value_name;
 
     foreach my $value ($self->get_list_of_values) {
         if (uc $value_name eq uc $value->{_name}) {
@@ -74,6 +78,12 @@ sub get_value {
         }
     }
     return undef;
+}
+
+sub print_summary {
+    my $self = shift;
+
+    print $self->as_string, "\n";
 }
 
 sub as_regedit_export {
@@ -85,12 +95,12 @@ sub as_regedit_export {
 sub regenerate_path {
     my $self = shift;
 
-    # find root
+    # ascend to the root
     my $key = $self;
     my @key_names = ($key->get_name);
     while (!$key->is_root) {
         $key = $key->get_parent;
-        if (!defined($key)) {
+        if (!defined $key) { # found an undefined parent key
             unshift @key_names, "(Invalid Parent Key)";
             last;
         }
@@ -105,6 +115,8 @@ sub regenerate_path {
 sub get_value_data {
     my $self = shift;
     my $value_name = shift;
+
+    croak "Usage: get_value_data('value name')" if !defined $value_name;
 
     if (my $value = $self->get_value($value_name)) {
         return $value->get_data;
@@ -133,6 +145,82 @@ sub get_mru_list_of_values {
         }
     }
     return @values;
+}
+
+sub get_list_of_subkeys {
+    my $self = shift;
+
+    my $subkey_iter = $self->get_subkey_iterator;
+    my @subkeys;
+    while (my $subkey = $subkey_iter->()) {
+        push @subkeys, $subkey;
+    }
+    return @subkeys;
+}
+
+sub get_list_of_values {
+    my $self = shift;
+
+    my $value_iter = $self->get_value_iterator;
+    my @values;
+    while (my $value = $value_iter->()) {
+        push @values, $value;
+    }
+    return @values;
+}
+
+sub get_subtree_iterator {
+    my $self = shift;
+
+    push my @subkey_iters, $self->get_subkey_iterator;
+    my $value_iter;
+    my $key;
+
+    return Parse::Win32Registry::Iterator->new(sub {
+        if (defined $value_iter && wantarray) {
+            my $value = $value_iter->();
+            if (defined $value) {
+                return ($key, $value);
+            }
+            # $value_iter should now be made undef
+            # or at least reset by the following code
+        }
+        while (@subkey_iters > 0) {
+            $key = $subkey_iters[-1]->(); # depth-first
+            if (defined $key) {
+                push @subkey_iters, $key->get_subkey_iterator;
+                $value_iter = $key->get_value_iterator;
+                return $key;
+            }
+            pop @subkey_iters; # iter finished, so remove it
+        }
+        return;
+    });
+}
+
+sub walk {
+    my $self = shift;
+    my $prewalk_func = shift;
+    my $value_func = shift;
+    my $postwalk_func = shift;
+
+    if (!defined $prewalk_func && !defined $postwalk_func) {
+        $prewalk_func = sub { print "+ ", $_[0]->get_path, "\n"; };
+        $value_func = sub { print "  '", $_[0]->get_name, "'\n"; };
+        $postwalk_func = sub { print "- ", $_[0]->get_path, "\n"; };
+    }
+
+    $prewalk_func->($self) if ref $prewalk_func eq 'CODE';
+
+    foreach my $value ($self->get_list_of_values) {
+        $value_func->($value) if ref $value_func eq 'CODE';
+    }
+
+    foreach my $subkey ($self->get_list_of_subkeys) {
+        $subkey->walk($prewalk_func, $value_func, $postwalk_func);
+    }
+
+    $postwalk_func->($self) if ref $postwalk_func eq 'CODE';
 }
 
 1;

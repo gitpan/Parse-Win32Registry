@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-use Parse::Win32Registry 0.40;
+use Parse::Win32Registry 0.50;
 
 sub find_file
 {

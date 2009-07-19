@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-use Parse::Win32Registry;
+use Parse::Win32Registry 0.50;
 
 sub find_file
 {
@@ -19,14 +19,16 @@ sub find_file
 
     my $timestamp_as_string = '(undefined)';
 
+    my $desc = "95";
+
     is($registry->get_filename, $filename,
-        "get_filename eq '$filename'");
+        "$desc get_filename eq '$filename'");
     ok(!defined($registry->get_timestamp),
-        "get_timestamp undefined");
+        "$desc get_timestamp undefined");
     is($registry->get_timestamp_as_string, $timestamp_as_string,
-        "get_timestamp_as_string eq '$timestamp_as_string'");
+        "$desc get_timestamp_as_string eq '$timestamp_as_string'");
     ok(!defined($registry->get_embedded_filename),
-        "get_embedded_filename undefined");
+        "$desc get_embedded_filename undefined");
 }
 
 {
@@ -40,12 +42,14 @@ sub find_file
     my $timestamp_as_string = '2006-11-04T10:57:20Z';
     my $embedded_filename = 'ttings\Administrator\ntuser.dat';
 
+    my $desc = "NT";
+
     is($registry->get_filename, $filename,
-        "get_filename eq '$filename'");
+        "$desc get_filename eq '$filename'");
     cmp_ok($registry->get_timestamp, '==', $timestamp,
-        "get_timestamp == $timestamp");
+        "$desc get_timestamp == $timestamp");
     is($registry->get_timestamp_as_string, $timestamp_as_string,
-        "get_timestamp_as_string eq '$timestamp_as_string'");
+        "$desc get_timestamp_as_string eq '$timestamp_as_string'");
     is($registry->get_embedded_filename, $embedded_filename,
-        "get_embedded_filename eq '$embedded_filename'");
+        "$desc get_embedded_filename eq '$embedded_filename'");
 }
