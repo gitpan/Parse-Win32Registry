@@ -480,4 +480,36 @@ sub get_value_iterator {
     });
 }
 
+sub get_associated_offsets {
+    my $self = shift;
+
+    my @owners = ();
+
+    push @owners, $self->{_offset};
+
+    if ($self->{_offset_to_security}) {
+        push @owners, $self->{_offset_to_security};
+    }
+
+    if ($self->{_offset_to_class_name}) {
+        push @owners, $self->{_offset_to_class_name};
+    }
+
+    if ($self->{_num_subkeys}) {
+        push @owners, $self->{_offset_to_subkey_list};
+    }
+
+    # Indirect offsets must be added after _get_offsets_to_subkeys
+    # has been called (as this populates the _indirect_offsets field)
+    if ($self->{_indirect_offsets}) {
+        push @owners, keys %{ $self->{_indirect_offsets} };
+    }
+
+    if ($self->{_num_values}) {
+        push @owners, $self->{_offset_to_value_list};
+    }
+
+    return @owners;
+}
+
 1;

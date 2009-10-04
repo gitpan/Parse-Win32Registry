@@ -3,7 +3,7 @@ package Parse::Win32Registry;
 use strict;
 use warnings;
 
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 
 use base qw(Exporter);
 
@@ -359,6 +359,32 @@ The default value (displayed as '(Default)' by REGEDIT)
 does not actually have a name. It can obtained by supplying
 an empty string, e.g. $key->get_value('');
 
+=item $key->get_value_data( 'value name' )
+
+Returns the data for the specified value name.
+If either the value or the value's data does not exist,
+nothing will be returned.
+
+This is simply a shortcut for accessing the data of a value
+without creating an intermediate Value object.
+
+The following code:
+
+    my $value = $key->get_value('value name');
+    if (defined $value) {
+        my $data = $value->get_data;
+        if (defined $data) {
+            ...process data...
+        }
+    }
+
+can be replaced with:
+
+    my $data = $key->get_value_data('value name');
+    if (defined $data) {
+        ...process data...
+    }
+
 =item $key->get_list_of_subkeys
 
 Returns a list of Key objects representing the subkeys of the
@@ -610,7 +636,8 @@ REG_MULTI_SZ values will be returned as a list of strings when
 called in a list context,
 and as a string with each element separated by
 the list separator $" when called in a scalar context.
-(The list separator defaults to the space character.)
+(The list separator defaults to the space character.
+See perlvar for further information.)
 String data will be converted from Unicode (UCS-2LE) for Windows
 NT based registry files.
 
@@ -828,6 +855,13 @@ the ACE formatted for presentation.
 A SID object represents a Security Identifier.
 
 =over 4
+
+=item $sid->get_name
+
+Returns a string containing a name for the SID
+(e.g. "Administrators" for S-1-5-32-544)
+if it is a "well known" SID.
+See Microsoft Knowledge Base Article KB243330.
 
 =item $sid->as_string
 
@@ -1262,7 +1296,8 @@ but with something a little more helpful than a hex editor.
 They are not designed for pulling data out of keys and values.
 They are designed for providing technical information about keys and values.
 
-Most of these methods are demonstrated by the supplied regscan.pl script.
+Most of these methods are demonstrated by the supplied regscan.pl
+and regscope.pl scripts.
 
 =head2 Registry Object Methods
 
@@ -1487,7 +1522,7 @@ Type regclassnames.pl on its own to see the help:
 
 =head2 regcompare.pl
 
-regview.pl is a GTK+ program for comparing multiple registry files.
+regcompare.pl is a GTK+ program for comparing multiple registry files.
 It displays a tree of the registry keys and values
 highlighting the changed keys and values,
 and a table detailing the actual changes.
@@ -1499,6 +1534,8 @@ L<http://gtk2-perl.sourceforge.net/win32/>.
 Filenames of registry files to compare can be supplied on the command line:
 
     regcompare.pl <filename1> <filename2> <filename3> ...
+
+You can of course use wildcards when running from a Unix shell.
 
 =head2 regdump.pl
 
@@ -1621,6 +1658,23 @@ Type regscan.pl on its own to see the help:
         -u or --unparsed    show the unparsed on-disk entries as a hex dump
         -w or --warnings    display warnings of invalid keys and values
 
+=head2 regscope.pl
+
+regscope.pl is a GTK+ registry scanner.
+It presents all the entries in a registry file returned by the
+get_hbin_iterator and get_entry_iterator methods.
+When viewing Windows NT registry files, it uses color to highlight
+key, value, security, and subkey list entries, and presents the hbin
+as a colored map.
+
+It requires Gtk2-Perl to be installed.
+Links to Windows binaries can be found via the project home page at
+L<http://gtk2-perl.sourceforge.net/win32/>.
+
+A filename can also be supplied on the command line:
+
+    regscope.pl <filename>
+
 =head2 regsecurity.pl
 
 regsecurity.pl will display the security information
@@ -1708,7 +1762,7 @@ A filename can also be supplied on the command line:
 This would not have been possible without the work of those people who have
 analysed and documented the structure of Windows Registry files, namely:
 the WINE Project (see misc/registry.c in older releases),
-the Samba Project (see utils/editreg.c and utils/profiles.c),
+the Samba Project (see utils/editreg.c and utils/profiles.c in older releases),
 Petter Nordahl-Hagen (see chntpw's ntreg.h),
 and B.D. (see WinReg.txt).
 

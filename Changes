@@ -1,5 +1,32 @@
 Revision history for Perl extension Parse::Win32Registry.
 
+** 0.51 2009-10-04
+
+Added new regscope.pl script, a GTK+ registry entry viewer that uses color
+to highlight different types of registry entries.
+
+Documented the get_name method of SID objects and the get_value_data
+method of Key objects. The as_string method of the ACE object and the
+as_stanza method of the SecurityDescriptor object now include the well
+known SID names (as returned each SID object's get_name method) for
+each SID object.
+
+Updated the regview.pl and regcompare.pl scripts: regview.pl and
+regcompare.pl can now select keys and/or values when searching,
+regview.pl can now sort columns (e.g. keys can be sorted by timestamp,
+values by type, etc), regcompare.pl can now bookmark keys or values,
+and regview.pl now has a basic report view.
+
+Fixed the get_subtree_iter and make_multiple_subkey_iterator methods
+to return the root key(s) of the subtree(s) as the documentation
+indicates. regview.pl, regmultidiff.pl, and regcompare.pl amended to
+accommodate these changes.
+
+Fixed redisplay problem closing dialogs using Escape in regview.pl and
+regcompare.pl.
+
+Makefile.pl now includes all scripts as exe_files.
+
 ** 0.50 2009-07-19
 
 Security information is now extracted from Windows NT registry files.

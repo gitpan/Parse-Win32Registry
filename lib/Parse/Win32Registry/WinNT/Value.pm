@@ -237,4 +237,18 @@ sub parse_info {
     return $info;
 }
 
+sub get_associated_offsets {
+    my $self = shift;
+
+    my @owners = ();
+
+    push @owners, $self->{_offset};
+
+    if (!$self->{_data_inline}) {
+        push @owners, $self->{_offset_to_data};
+    }
+
+    return @owners;
+}
+
 1;

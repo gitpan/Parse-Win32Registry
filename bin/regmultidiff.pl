@@ -4,7 +4,7 @@ use warnings;
 
 use File::Basename;
 use Getopt::Long;
-use Parse::Win32Registry 0.50 qw( make_multiple_subtree_iterator
+use Parse::Win32Registry 0.51 qw( make_multiple_subtree_iterator
                                   compare_multiple_keys
                                   compare_multiple_values
                                   hexdump );
@@ -68,9 +68,10 @@ for (my $num = 0; $num < $batch_size; $num++) {
 }
 
 my $key_shown;
-my $keys_ref = \@start_keys;
-my $values_ref;
-do {
+#my $keys_ref = \@start_keys;
+#my $values_ref;
+
+while (my ($keys_ref, $values_ref) = $subtree_iter->get_next) {
     my @keys = @$keys_ref;
     my $any_key = (grep { defined } @keys)[0];
     die "Unexpected error: no keys!" if !defined $any_key;
@@ -136,7 +137,6 @@ do {
         }
     }
 }
-while (($keys_ref, $values_ref) = $subtree_iter->get_next);
 
 sub usage {
     my $script_name = basename $0;

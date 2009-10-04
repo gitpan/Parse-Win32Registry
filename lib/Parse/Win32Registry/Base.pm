@@ -445,7 +445,11 @@ sub make_multiple_subtree_iterator {
         croak "Usage: make_multiple_subtree_iterator\(\$key1, \$key2, ...\)";
     }
 
-    push my @subkey_iters, make_multiple_subkey_iterator(@keys);
+    my @subkeys_queue = (\@keys);
+    push my (@subkey_iters), Parse::Win32Registry::Iterator->new(sub {
+        return shift @subkeys_queue;
+    });
+#    make_multiple_subkey_iterator(@keys);
     my $value_iter;
     my $subkeys;
 
@@ -881,11 +885,14 @@ sub get_trustee {
 sub as_string {
     my $self = shift;
 
+    my $sid = $self->{_trustee};
     my $string = sprintf "%s 0x%02x 0x%08x %s",
         _look_up_ace_type($self->{_type}),
         $self->{_flags},
         $self->{_mask},
-        $self->{_trustee}->as_string;
+        $sid->as_string;
+    my $name = $sid->get_name;
+    $string .= " [$name]" if defined $name;
     return $string;
 }
 
@@ -1087,10 +1094,16 @@ sub as_stanza {
 
     my $stanza = "";
     if (defined(my $owner = $self->{_owner})) {
-        $stanza .= "Owner SID: " . $owner->as_string . "\n";
+        $stanza .= "Owner SID: " . $owner->as_string;
+        my $name = $owner->get_name;
+        $stanza .= " [$name]" if defined $name;
+        $stanza .= "\n";
     }
     if (defined(my $group = $self->{_group})) {
-        $stanza .= "Group SID: " . $group->as_string . "\n";
+        $stanza .= "Group SID: " . $group->as_string;
+        my $name = $group->get_name;
+        $stanza .= " [$name]" if defined $name;
+        $stanza .= "\n";
     }
     if (defined(my $sacl = $self->{_sacl})) {
         foreach my $ace ($sacl->get_list_of_aces) {

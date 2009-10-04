@@ -172,7 +172,10 @@ sub get_list_of_values {
 sub get_subtree_iterator {
     my $self = shift;
 
-    push my @subkey_iters, $self->get_subkey_iterator;
+    my @start_keys = ($self);
+    push my (@subkey_iters), Parse::Win32Registry::Iterator->new(sub {
+        return shift @start_keys;
+    });
     my $value_iter;
     my $key;
 

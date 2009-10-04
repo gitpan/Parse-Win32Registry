@@ -177,4 +177,14 @@ sub parse_info {
     return $info;
 }
 
+sub get_associated_offsets {
+    my $self = shift;
+
+    my @owners = ();
+
+    push @owners, $self->{_offset};
+
+    return @owners;
+}
+
 1;

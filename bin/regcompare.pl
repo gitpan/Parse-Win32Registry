@@ -5,9 +5,15 @@ use warnings;
 use Glib ':constants';
 use Gtk2 -init;
 
+my $screen = Gtk2::Gdk::Screen->get_default;
+my $window_width = $screen->get_width * 0.9;
+my $window_height = $screen->get_height * 0.8;
+$window_width = 1100 if $window_width > 1100;
+$window_height = 900 if $window_height > 900;
+
 use File::Basename;
 use File::Spec;
-use Parse::Win32Registry 0.50 qw( make_multiple_subtree_iterator
+use Parse::Win32Registry 0.51 qw( make_multiple_subtree_iterator
                                   make_multiple_subkey_iterator
                                   make_multiple_value_iterator
                                   compare_multiple_keys
@@ -176,6 +182,7 @@ my @actions = (
     # name, stock id, label
     ['FileMenu', undef, '_File'],
     ['SearchMenu', undef, '_Search'],
+    ['BookmarksMenu', undef, '_Bookmarks'],
     ['ViewMenu', undef, '_View'],
     ['HelpMenu', undef, '_Help'],
     # name, stock-id, label, accelerator, tooltip, callback
@@ -184,8 +191,11 @@ my @actions = (
     ['Quit', 'gtk-quit', '_Quit', '<control>Q', undef, \&quit],
     ['Find', 'gtk-find', '_Find', '<control>F', undef, \&find],
     ['FindNext', undef, 'Find Next', '<control>G', undef, \&find_next],
+    ['FindNext2', undef, 'Find Next', 'F3', undef, \&find_next],
     ['FindChange', 'gtk-find', 'Find _Change', '<control>N', undef, \&find_change],
     ['FindNextChange', undef, 'Find Next Change', '<control>M', undef, \&find_next_change],
+    ['AddBookmark', 'gtk-add', '_Add Bookmark', '<control>D', undef, \&add_bookmark],
+    ['EditBookmarks', undef, '_Edit Bookmarks', '<control>B', undef, \&edit_bookmarks],
     ['About', 'gtk-about', '_About', undef, undef, \&about],
 );
 
@@ -194,11 +204,17 @@ $action_group->add_actions(\@actions, undef);
 
 my @toggle_actions = (
     # name, stock id, label, accelerator, tooltip, callback, active
-    ['ShowDetail', undef, 'Show _Detail', '<control>X', undef, \&toggle_item_detail, TRUE],
+    ['ShowToolbar', undef, 'Show _Toolbar', '<control>T', undef, \&toggle_toolbar, TRUE],
+    ['ShowDetail', 'gtk-edit', 'Show _Detail', '<control>X', undef, \&toggle_item_detail, TRUE],
 );
 $action_group->add_toggle_actions(\@toggle_actions, undef);
 
+my $action_group2 = Gtk2::ActionGroup->new('actions2'); # bookmarks
+my $bookmarks_merge_id = $uimanager->new_merge_id;
+my $action_name = 1; # unique action name
+
 $uimanager->insert_action_group($action_group, 0);
+$uimanager->insert_action_group($action_group2, 1);
 
 my $ui_info = <<END_OF_UI;
 <ui>
@@ -216,8 +232,15 @@ my $ui_info = <<END_OF_UI;
             <menuitem action='FindChange'/>
             <menuitem action='FindNextChange'/>
         </menu>
+        <menu action='BookmarksMenu'>
+            <menuitem action='AddBookmark'/>
+            <menuitem action='EditBookmarks'/>
+            <separator/>
+        </menu>
         <menu action='ViewMenu'>
+            <menuitem action='ShowToolbar'/>
             <menuitem action='ShowDetail'/>
+            <separator/>
         </menu>
         <menu action='HelpMenu'>
             <menuitem action='About'/>
@@ -232,6 +255,7 @@ my $ui_info = <<END_OF_UI;
         <separator/>
         <toolitem action='Quit'/>
     </toolbar>
+    <accelerator action='FindNext2'/>
 </ui>
 END_OF_UI
 
@@ -239,6 +263,7 @@ $uimanager->add_ui_from_string($ui_info);
 
 my $menubar = $uimanager->get_widget('/MenuBar');
 my $toolbar = $uimanager->get_widget('/ToolBar');
+my $bookmarks_menu = $uimanager->get_widget('/MenuBar/BookmarksMenu')->get_submenu;
 
 ### STATUSBAR
 
@@ -246,7 +271,7 @@ my $statusbar = Gtk2::Statusbar->new;
 
 ### VBOX
 
-my $main_vbox = Gtk2::VBox->new;
+my $main_vbox = Gtk2::VBox->new(FALSE, 0);
 $main_vbox->pack_start($menubar, FALSE, FALSE, 0);
 $main_vbox->pack_start($toolbar, FALSE, FALSE, 0);
 $main_vbox->pack_start($vpaned1, TRUE, TRUE, 0);
@@ -255,7 +280,7 @@ $main_vbox->pack_start($statusbar, FALSE, FALSE, 0);
 ### WINDOW
 
 my $window = Gtk2::Window->new;
-$window->set_default_size(600, 400);
+$window->set_default_size($window_width, $window_height);
 $window->set_position('center');
 $window->signal_connect(destroy => sub { Gtk2->main_quit });
 $window->add($main_vbox);
@@ -301,10 +326,14 @@ sub build_open_files_dialog {
         'gtk-remove' => 50,
         'gtk-ok' => 'ok',
     );
-    $dialog->set_size_request(-1, 400);
+    $dialog->set_size_request($window_width * 0.8, $window_height * 0.8);
     $dialog->vbox->add($scrolled_file_view);
     $dialog->set_default_response('ok');
 
+    $dialog->signal_connect(delete_event => sub {
+        $dialog->hide;
+        return TRUE;
+    });
     $dialog->signal_connect(response => sub {
         my ($dialog, $response) = @_;
         if ($response eq '70') {
@@ -347,6 +376,119 @@ sub build_open_files_dialog {
 
 my $open_files_dialog = build_open_files_dialog;
 
+### BOOKMARKS STORE
+
+use constant {
+    BMCOL_NAME => 0,
+    BMCOL_LOCATION => 1,
+    BMCOL_ICON => 2,
+};
+
+my $bookmark_store = Gtk2::ListStore->new(
+    'Glib::String', 'Glib::Scalar', 'Glib::String',
+);
+
+sub build_bookmarks_dialog {
+    my $bookmark_view = Gtk2::TreeView->new($bookmark_store);
+    $bookmark_view->set_reorderable(TRUE);
+
+    my $bookmark_icon_cell = Gtk2::CellRendererPixbuf->new;
+    my $bookmark_name_cell = Gtk2::CellRendererText->new;
+    my $bookmark_column0 = Gtk2::TreeViewColumn->new;
+    $bookmark_column0->set_title('Bookmark');
+    $bookmark_column0->pack_start($bookmark_icon_cell, FALSE);
+    $bookmark_column0->pack_start($bookmark_name_cell, TRUE);
+    $bookmark_column0->set_attributes($bookmark_icon_cell,
+        'stock-id', BMCOL_ICON);
+    $bookmark_column0->set_attributes($bookmark_name_cell,
+        'text', BMCOL_NAME);
+    $bookmark_column0->set_resizable(TRUE);
+    $bookmark_view->append_column($bookmark_column0);
+
+    my $bookmark_location_cell = Gtk2::CellRendererText->new;
+    my $bookmark_column1 = $bookmark_view->insert_column_with_data_func(
+        1, 'Location', $bookmark_location_cell,
+        sub {
+            my ($column, $cell, $model, $iter, $num) = @_;
+            my $location = $model->get($iter, BMCOL_LOCATION);
+            if (defined $location) {
+                my ($subkey_path, $value_name) = @$location;
+                my $string = $subkey_path;
+                if (defined $value_name) {
+                    $value_name = '(Default)' if $value_name eq '';
+                    $string .= ", $value_name";
+                }
+                $cell->set('text', $string);
+            }
+            else {
+                $cell->set('text', '?');
+            }
+        },
+    );
+    $bookmark_location_cell->set('ellipsize', 'end');
+
+    my $scrolled_bookmark_view = Gtk2::ScrolledWindow->new;
+    $scrolled_bookmark_view->set_policy('automatic', 'automatic');
+    $scrolled_bookmark_view->set_shadow_type('in');
+    $scrolled_bookmark_view->add($bookmark_view);
+
+    my $label = Gtk2::Label->new;
+    $label->set_markup('<i>Drag bookmarks to reorder them</i>');
+
+    my $dialog = Gtk2::Dialog->new('Edit Bookmarks', $window, 'modal',
+        'gtk-remove' => 50,
+        'gtk-ok' => 'ok',
+    );
+    $dialog->resize($window_width * 0.8, $window_height * 0.8);
+    $dialog->vbox->pack_start($scrolled_bookmark_view, TRUE, TRUE, 0);
+    $dialog->vbox->pack_start($label, FALSE, FALSE, 5);
+    $dialog->set_default_response('ok');
+
+    $dialog->signal_connect(delete_event => sub {
+        $dialog->hide;
+        return TRUE;
+    });
+    $dialog->signal_connect(response => sub {
+        my ($dialog, $response) = @_;
+        if ($response eq '50') {
+            # Remove selected bookmark
+            my $selection = $bookmark_view->get_selection;
+            my $iter = $selection->get_selected;
+            if (defined $iter) {
+                $bookmark_store->remove($iter);
+            }
+        }
+        else {
+            # Before exiting, move menuitems into current bookmark order
+            $uimanager->remove_ui($bookmarks_merge_id);
+            $uimanager->ensure_update;
+            foreach my $action ($action_group2->list_actions) {
+                $action_group2->remove_action($action);
+            }
+            $action_name = 1;
+            my $iter = $bookmark_store->get_iter_first;
+            while (defined $iter) {
+                my $bookmark_name = $bookmark_store->get($iter, BMCOL_NAME);
+                my $location = $bookmark_store->get($iter, BMCOL_LOCATION);
+                my $icon = $bookmark_store->get($iter, BMCOL_ICON);
+                my $display_name = $bookmark_name;
+                $display_name =~ s/_/__/g;
+                $action_group2->add_actions([
+                    [$action_name, $icon, $display_name, undef, undef, \&go_to_bookmark],
+                ], $location);
+                $uimanager->add_ui($bookmarks_merge_id, '/MenuBar/BookmarksMenu', $action_name, $action_name, 'menuitem', FALSE);
+                $action_name++;
+                $iter = $bookmark_store->iter_next($iter);
+            }
+            $dialog->hide;
+        }
+    });
+
+    return $dialog;
+}
+
+my $bookmarks_dialog = build_bookmarks_dialog;
+
 ######################## GLOBAL SETUP
 
 my @filenames = ();
@@ -354,7 +496,9 @@ my @root_keys = ();
 
 my $last_dir;
 
-my $find_param;
+my $search_keys = TRUE;
+my $search_values = TRUE;
+my $find_param = '';
 my $find_iter;
 my $change_iter;
 
@@ -420,6 +564,16 @@ sub toggle_item_detail {
     }
     else {
         $scrolled_text_view->hide;
+    }
+}
+
+sub toggle_toolbar {
+    my ($toggle_action) = @_;
+    if ($toggle_action->get_active) {
+        $toolbar->show;
+    }
+    else {
+        $toolbar->hide;
     }
 }
 
@@ -552,11 +706,12 @@ sub compare_files {
                 my $color = $model->get($iter, TREECOL_COLOR);
                 if (defined $changes) {
                     my $diff = substr($changes->[$num], 0, 1);
-                    $cell->set('text', $diff || '.');
+                    $cell->set('text', $diff || "\x{00bb}");
                     $cell->set('foreground', $color);
                 }
                 else {
-                    $cell->set('text', '.');
+                    $cell->set('text', "\x{00b7}");
+                    $cell->set('foreground', $color);
                 }
             },
             $num, # additional data is passed to callback
@@ -607,11 +762,18 @@ sub add_children {
 
     while (defined(my $subkeys = $subkeys_iter->get_next)) {
         my @changes = compare_multiple_keys(@$subkeys);
+        my $num_changes = grep { $_ } @changes;
+        # insert a 'blank' change for missing subkeys
+        for (my $i = 0; $i < @changes; $i++) {
+            if ($changes[$i] eq '' && !defined $subkeys->[$i]) {
+                $changes[$i] = ' ';
+            }
+        }
 
         my $any_subkey = (grep { defined } @$subkeys)[0];
 
         my $iter = $model->append($parent_iter);
-        my $num_changes = grep { $_ } @changes;
+
         if ($num_changes > 0) {
             $model->set($iter,
                 TREECOL_NAME, $any_subkey->get_name,
@@ -635,13 +797,20 @@ sub add_children {
 
     while (defined(my $values = $values_iter->get_next)) {
         my @changes = compare_multiple_values(@$values);
+        my $num_changes = grep { $_ } @changes;
+        # insert a 'blank' change for missing values
+        for (my $i = 0; $i < @changes; $i++) {
+            if ($changes[$i] eq '' && !defined $values->[$i]) {
+                $changes[$i] = " ";
+            }
+        }
 
         my $any_value = (grep { defined } @$values)[0];
-
         my $name = $any_value->get_name;
         $name = "(Default)" if $name eq '';
+
         my $iter = $model->append($parent_iter);
-        my $num_changes = grep { $_ } @changes;
+
         if ($num_changes > 0) {
             $model->set($iter,
                 TREECOL_NAME, $name,
@@ -751,6 +920,7 @@ sub show_message {
         'ok',
         $message,
     );
+    $dialog->set_title(ucfirst $type);
     $dialog->run;
     $dialog->destroy;
 }
@@ -792,8 +962,8 @@ sub go_to_subkey_and_value {
                         ? ($subkey_path)
                         : split(/\\/, $subkey_path, -1);
 
-    my $root_iter = $tree_store->get_iter_first;
-    my $iter = $root_iter;
+    my $iter = $tree_store->get_iter_first;
+    return if !defined $iter; # no registry loaded
 
     while (defined(my $subkey_name = shift @path_components)) {
         my $items = $tree_store->get($iter, TREECOL_ITEMS);
@@ -813,10 +983,12 @@ sub go_to_subkey_and_value {
                 if (!defined $iter) {
                     return; # no matching child iter
                 }
-
             }
+            my $parent_iter = $tree_store->iter_parent($iter);
+            my $parent_path = $tree_store->get_path($parent_iter);
+            $tree_view->expand_to_path($parent_path);
             my $tree_path = $tree_store->get_path($iter);
-            $tree_view->expand_to_path($tree_path);
+#            $tree_view->expand_to_path($tree_path);
             $tree_view->scroll_to_cell($tree_path);
             $tree_view->set_cursor($tree_path);
             $window->set_focus($tree_view);
@@ -825,19 +997,33 @@ sub go_to_subkey_and_value {
     }
 }
 
+sub get_search_message {
+    my $message;
+    if ($search_keys && $search_values) {
+        $message = "Searching registry keys and values...";
+    }
+    elsif ($search_keys) {
+        $message = "Searching registry keys...";
+    }
+    elsif ($search_values) {
+        $message = "Searching registry values...";
+    }
+    return $message;
+}
+
 sub find_next {
     if (!defined $find_param || !defined $find_iter) {
         return;
     }
 
     my $label = Gtk2::Label->new;
-    $label->set_text("Searching registry...");
+    $label->set_text(get_search_message);
     my $dialog = Gtk2::Dialog->new('Find',
         $window,
         'modal',
         'gtk-cancel' => 'cancel',
     );
-    $dialog->vbox->pack_start($label, TRUE, TRUE, 10);
+    $dialog->vbox->pack_start($label, TRUE, TRUE, 5);
     $dialog->set_default_response('cancel');
     $dialog->show_all;
 
@@ -846,57 +1032,82 @@ sub find_next {
 
         if (!defined $keys_ref) {
             $dialog->response('ok');
-            show_message('info', 'Finished searching.');
             return FALSE; # stop searching
         }
 
         # Obtain the name and path from the first defined key
         my $any_key = (grep { defined } @$keys_ref)[0];
         my $subkey_path = (split(/\\/, $any_key->get_path, 2))[1];
+        if (!defined $subkey_path) {
+            return TRUE;
+        }
 
+        # Check values (if defined) for a match
         if (defined $values_ref) {
-            my $any_value = (grep { defined } @$values_ref)[0];
-            my $value_name = $any_value->get_name;
-            if (index(lc $value_name, lc $find_param) >= 0) {
-                go_to_subkey_and_value($subkey_path, $value_name);
-                $dialog->response('ok');
-                return FALSE; # stop searching
+            if ($search_values) {
+                my $any_value = (grep { defined } @$values_ref)[0];
+                my $value_name = $any_value->get_name;
+                if (index(lc $value_name, lc $find_param) >= 0) {
+                    go_to_subkey_and_value($subkey_path, $value_name);
+                    $dialog->response(50);
+                    return FALSE; # stop searching
+                }
             }
-            else {
-                return TRUE; # continue searching
-            }
-        }
-
-        my $key_name = $any_key->get_name;
-        if (index(lc $key_name, lc $find_param) >= 0) {
-            go_to_subkey_and_value($subkey_path);
-            $dialog->response('ok');
-            return FALSE; # stop searching
-        }
-        else {
             return TRUE; # continue searching
         }
+
+        # Check keys for a match
+        if ($search_keys) {
+            my $key_name = $any_key->get_name;
+            if (index(lc $key_name, lc $find_param) >= 0) {
+                go_to_subkey_and_value($subkey_path);
+                $dialog->response(50);
+                return FALSE; # stop searching
+            }
+        }
+        return TRUE; # continue searching
     });
 
     my $response = $dialog->run;
+    $dialog->destroy;
+
     if ($response eq 'cancel' || $response eq 'delete-event') {
         Glib::Source->remove($id);
     }
-    $dialog->destroy;
+    elsif ($response eq 'ok') {
+        show_message('info', 'Finished searching.');
+    }
 }
 
 sub find {
     return if @root_keys == 0;
 
     my $entry = Gtk2::Entry->new;
+    $entry->set_text($find_param);
     $entry->set_activates_default(TRUE);
+    my $check1 = Gtk2::CheckButton->new('Search _Keys');
+    $check1->set_active($search_keys);
+    my $check2 = Gtk2::CheckButton->new('Search _Values');
+    $check2->set_active($search_values);
+    $check1->signal_connect(toggled => sub {
+        if (!$check1->get_active && !$check2->get_active) {
+            $check2->set_active(TRUE);
+        }
+    });
+    $check2->signal_connect(toggled => sub {
+        if (!$check1->get_active && !$check2->get_active) {
+            $check1->set_active(TRUE);
+        }
+    });
     my $dialog = Gtk2::Dialog->new('Find',
         $window,
         'modal',
         'gtk-cancel' => 'cancel',
         'gtk-ok' => 'ok',
     );
-    $dialog->vbox->pack_start($entry, TRUE, TRUE, 10);
+    $dialog->vbox->pack_start($entry, TRUE, TRUE, 0);
+    $dialog->vbox->pack_start($check1, TRUE, TRUE, 0);
+    $dialog->vbox->pack_start($check2, TRUE, TRUE, 0);
     $dialog->set_default_response('ok');
     $dialog->show_all;
 
@@ -904,6 +1115,8 @@ sub find {
     $dialog->destroy;
 
     if ($response eq 'ok' && @root_keys > 0) {
+        $search_keys = $check1->get_active;
+        $search_values = $check2->get_active;
         $find_param = $entry->get_text;
         if ($find_param ne '') {
             $find_iter = make_multiple_subtree_iterator(@root_keys);
@@ -918,13 +1131,13 @@ sub find_next_change {
     }
 
     my $label = Gtk2::Label->new;
-    $label->set_text("Searching registry...");
+    $label->set_text(get_search_message);
     my $dialog = Gtk2::Dialog->new('Find Change',
         $window,
         'modal',
         'gtk-cancel' => 'cancel',
     );
-    $dialog->vbox->pack_start($label, TRUE, TRUE, 10);
+    $dialog->vbox->pack_start($label, TRUE, TRUE, 5);
     $dialog->set_default_response('cancel');
     $dialog->show_all;
 
@@ -933,48 +1146,54 @@ sub find_next_change {
 
         if (!defined $keys_ref) {
             $dialog->response('ok');
-            show_message('info', 'Finished searching.');
             return FALSE; # stop searching
         }
 
         # Obtain the name and path from the first defined key
         my $any_key = (grep { defined } @$keys_ref)[0];
         my $subkey_path = (split(/\\/, $any_key->get_path, 2))[1];
+        if (!defined $subkey_path) {
+            return TRUE;
+        }
 
+        # Check values (if defined) for changes
         if (defined $values_ref) {
-            my $any_value = (grep { defined } @$values_ref)[0];
-            my $value_name = $any_value->get_name;
-            my @changes = compare_multiple_values(@$values_ref);
-            my $num_changes = grep { $_ } @changes;
-            if ($num_changes > 0) {
-                go_to_subkey_and_value($subkey_path, $value_name);
-                $dialog->response('ok');
-                return FALSE; # stop searching
+            if ($search_values) {
+                my $any_value = (grep { defined } @$values_ref)[0];
+                my $value_name = $any_value->get_name;
+                my @changes = compare_multiple_values(@$values_ref);
+                my $num_changes = grep { $_ } @changes;
+                if ($num_changes > 0) {
+                    go_to_subkey_and_value($subkey_path, $value_name);
+                    $dialog->response(50);
+                    return FALSE; # stop searching
+                }
             }
-            else {
-                return TRUE; # continue searching
-            }
-        }
-
-        my $key_name = $any_key->get_name;
-
-        my @changes = compare_multiple_keys(@$keys_ref);
-        my $num_changes = grep { $_ } @changes;
-        if ($num_changes > 0) {
-            go_to_subkey_and_value($subkey_path);
-            $dialog->response('ok');
-            return FALSE; # stop searching
-        }
-        else {
             return TRUE; # continue searching
         }
+
+        if ($search_keys) {
+            my $key_name = $any_key->get_name;
+            my @changes = compare_multiple_keys(@$keys_ref);
+            my $num_changes = grep { $_ } @changes;
+            if ($num_changes > 0) {
+                go_to_subkey_and_value($subkey_path);
+                $dialog->response(50);
+                return FALSE; # stop searching
+            }
+        }
+        return TRUE; # continue searching
     });
 
     my $response = $dialog->run;
+    $dialog->destroy;
+
     if ($response eq 'cancel' || $response eq 'delete-event') {
         Glib::Source->remove($id);
     }
-    $dialog->destroy;
+    elsif ($response eq 'ok') {
+        show_message('info', 'Finished searching.');
+    }
 }
 
 sub find_change {
@@ -1006,14 +1225,30 @@ sub find_change {
     my $key_path = $start_key->get_path;
 
     my $label = Gtk2::Label->new;
-    $label->set_text("Find changes starting from\n'$key_path'?");
+    $label->set_markup("Find changes starting from\n<b>$key_path</b>?");
+    my $check1 = Gtk2::CheckButton->new('Search _Keys');
+    $check1->set_active($search_keys);
+    my $check2 = Gtk2::CheckButton->new('Search _Values');
+    $check2->set_active($search_values);
+    $check1->signal_connect(toggled => sub {
+        if (!$check1->get_active && !$check2->get_active) {
+            $check2->set_active(TRUE);
+        }
+    });
+    $check2->signal_connect(toggled => sub {
+        if (!$check1->get_active && !$check2->get_active) {
+            $check1->set_active(TRUE);
+        }
+    });
     my $dialog = Gtk2::Dialog->new('Find Change',
         $window,
         'modal',
         'gtk-cancel' => 'cancel',
         'gtk-ok' => 'ok',
     );
-    $dialog->vbox->pack_start($label, TRUE, TRUE, 10);
+    $dialog->vbox->pack_start($label, TRUE, TRUE, 5);
+    $dialog->vbox->pack_start($check1, TRUE, TRUE, 0);
+    $dialog->vbox->pack_start($check2, TRUE, TRUE, 0);
     $dialog->set_default_response('ok');
     $dialog->show_all;
 
@@ -1021,7 +1256,92 @@ sub find_change {
     $dialog->destroy;
 
     if ($response eq 'ok') {
+        $search_keys = $check1->get_active;
+        $search_values = $check2->get_active;
         $change_iter = make_multiple_subtree_iterator(@start_keys);
+        $change_iter->get_next;
         find_next_change;
     }
+}
+
+sub get_location {
+    my @start_keys;
+    my @start_values;
+    my ($keys_ref, $values_ref);
+    my ($model, $iter) = $tree_selection->get_selected;
+    if (defined $model && defined $iter) {
+        my $icon = $model->get($iter, TREECOL_ICON);
+        if ($icon eq 'gtk-directory') {
+            # Item is a key
+            $keys_ref = $model->get($iter, TREECOL_ITEMS);
+        }
+        else {
+            # Item is a value
+            $values_ref = $model->get($iter, TREECOL_ITEMS);
+
+            # Find parent key
+            $iter = $model->iter_parent($iter);
+            return if !defined $iter;
+
+            $keys_ref = $model->get($iter, TREECOL_ITEMS);
+        }
+        return ($keys_ref, $values_ref);
+    }
+    else {
+        return ($keys_ref, $values_ref);
+    }
+}
+
+sub add_bookmark {
+    my ($keys_ref, $values_ref) = get_location;
+    if (defined $keys_ref) {
+        my $any_key = (grep { defined } @$keys_ref)[0];
+        my $key_path = $any_key->get_path;
+        my $key_name = $any_key->get_name;
+
+        # Remove root key name to get subkey path
+        my $subkey_path = (split(/\\/, $key_path, 2))[1];
+        return if !defined $subkey_path;
+
+        my $bookmark_name;
+        my $location;
+        my $icon;
+        if (defined $values_ref) {
+            my $any_value = (grep { defined } @$values_ref)[0];
+            my $value_name = $any_value->get_name;
+            $location = [$subkey_path, $value_name];
+            $value_name = '(Default)' if $value_name eq '';
+            $bookmark_name = "$value_name [$key_name]";
+            $icon = 'gtk-file';
+        }
+        else {
+            $bookmark_name = $key_name;
+            $location = [$subkey_path];
+            $icon = 'gtk-directory';
+        }
+        my $display_name = $bookmark_name;
+        $display_name =~ s/_/__/g;
+        $action_group2->add_actions([
+            [$action_name, $icon, $display_name, undef, undef, \&go_to_bookmark],
+        ], $location);
+        $uimanager->add_ui($bookmarks_merge_id, '/MenuBar/BookmarksMenu', $action_name, $action_name, 'menuitem', FALSE);
+        $action_name++;
+        if (my $iter = $bookmark_store->append) {
+            $bookmark_store->set($iter,
+                BMCOL_NAME, $bookmark_name,
+                BMCOL_LOCATION, $location,
+                BMCOL_ICON, $icon,
+            );
+        }
+    }
+}
+
+sub edit_bookmarks {
+    $bookmarks_dialog->show_all;
+}
+
+sub go_to_bookmark {
+    my ($menuitem, $location) = @_;
+    my ($subkey_path, $value_name) = @$location;
+    go_to_subkey_and_value($subkey_path, $value_name);
 }

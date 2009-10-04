@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Parse-Win32Registry
-version:             0.50
+version:             0.51
 abstract:            Parse Windows Registry Files
 license:             ~
 author:              

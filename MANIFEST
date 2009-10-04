@@ -10,6 +10,7 @@ bin/regexport.pl
 bin/regfind.pl
 bin/regmultidiff.pl
 bin/regscan.pl
+bin/regscope.pl
 bin/regsecurity.pl
 bin/regshell.pl
 bin/regstats.pl
@@ -36,6 +37,7 @@ t/constants.t
 t/entry.t
 t/errors.t
 t/file.t
+t/iterator.t
 t/key.t
 t/misc.t
 t/security.t
@@ -57,9 +59,11 @@ t/invalid_regf_header.rf
 t/invalid_rgkn_header.rf
 t/missing_rgkn_header.rf
 t/win95_error_tests.rf
+t/win95_iter_tests.rf
 t/win95_key_tests.rf
 t/win95_value_tests.rf
 t/winnt_error_tests.rf
+t/winnt_iter_tests.rf
 t/winnt_key_tests.rf
 t/winnt_security_tests.rf
 t/winnt_value_tests.rf
