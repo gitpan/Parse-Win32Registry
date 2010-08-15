@@ -14,7 +14,6 @@ our @EXPORT_OK = qw(
     iso8601
     hexdump
     format_octets
-    qquote
     unpack_windows_time
     unpack_string
     unpack_unicode_string
@@ -62,6 +61,8 @@ use constant REG_QWORD => 11;
 
 our $WARNINGS = 0;
 
+our $CODEPAGE = 'cp1252';
+
 sub warnf {
     my $message = shift;
     warn sprintf "$message\n", @_ if $WARNINGS;
@@ -69,41 +70,58 @@ sub warnf {
 
 sub hexdump {
     my $data = shift; # packed binary data
-    my $pos = shift || 0; # starting value for displayed offset
+    my $start = shift || 0; # starting value for displayed offset
 
-    return "" if !defined($data);
+    return '' if !defined($data);
 
-    my $output = "";
+    my $output = '';
 
-    for (my $i = 0; $i < length($data); $i += 16) {
-        $output .= sprintf "%8x  ", $i + $pos;
+    my $fake_start = $start & ~0xf;
+    my $end = length($data);
 
-        my $row = substr($data, $i, 16);
-
-        my $row_length = 16;
-        $row_length = length($data) - $i if $i + 16 > length($data);
-        for (my $j = 0; $j < $row_length; $j++) {
-            my $ch = substr($data, $i + $j, 1);
-            $output .= sprintf "%02x ", ord $ch;
-            if ($j % 4 == 3) { $output .= " "; } # dword gaps
+    my $pos = 0;
+    if ($fake_start < $start) {
+        $output .= sprintf '%8x  ', $fake_start;
+        my $indent = $start - $fake_start;
+        $output .= '   ' x $indent;
+        my $row = substr($data, $pos, 16 - $indent);
+        my $len = length($row);
+        $output .= join(' ', unpack('H2' x $len, $row));
+        if ($indent + $len < 16) {
+            my $padding = 16 - $len - $indent;
+            $output .= '   ' x $padding;
         }
-        for (my $j = $row_length; $j < 16; $j++) {
-            $output .= "   ";
-            if ($j % 4 == 3) { $output .= " "; } # dword gaps
-        }
-
-        for (my $j = 0; $j < $row_length; $j++) {
-            my $ch = substr($data, $i + $j, 1);
-
-            if (ord $ch >= 32 && ord $ch <= 126) {
-                $output .= "$ch";
-            } else {
-                $output .= ".";
-            }
-        }
-
-        $output .= "\n"; # end of row
+        $output .= '  ';
+        $output .= ' ' x $indent;
+        $row =~ tr/\x20-\x7e/./c;
+#        $row = decode($CODEPAGE, $row);
+#        $row =~ s/\x{00ad}/ /g;
+#        $row =~ s/[\x{0000}-\x{001f}]/\x{00b7}/g;
+#        $row =~ s/[\x{fffd}\x{007f}]/\x{25ab}/g;
+        $output .= $row;
+        $output .= "\n";
+        $pos += $len;
     }
+    while ($pos < $end) {
+        $output .= sprintf '%8x  ', $start + $pos;
+        my $row = substr($data, $pos, 16);
+        my $len = length($row);
+        $output .= join(' ', unpack('H2' x $len, $row));
+        if ($len < 16) {
+            my $padding = 16 - $len;
+            $output .= '   ' x $padding;
+        }
+        $output .= '  ';
+        $row =~ tr/\x20-\x7e/./c;
+#        $row = decode($CODEPAGE, $row);
+#        $row =~ s/\x{00ad}/ /g;
+#        $row =~ s/[\x{0000}-\x{001f}]/\x{00b7}/g;
+#        $row =~ s/[\x{fffd}\x{007f}]/\x{25ab}/g;
+        $output .= $row;
+        $output .= "\n";
+        $pos += 16;
+    }
+
     return $output;
 }
 
@@ -111,102 +129,27 @@ sub format_octets {
     my $data = shift; # packed binary data
     my $col = shift || 0; # starting column, e.g. length of initial string
 
-    return "" if !defined($data);
+    return "\n" if !defined($data);
 
-    my @data = unpack("C*", $data);
+    my $output = '';
 
-    my $output = "";
+    $col = 76 if $col > 76;
+    my $max_octets = int((76 - $col) / 3) + 1;
 
-    for (my $i = 0; $i < @data; $i++) {
-        if ($col > 76) { # insert line break at column 76
-            $output .= "\\\n  ";
-            $col = 2;
-        }
-
-        $output .= sprintf "%02x", $data[$i];
-        $col += 2;
-
-        if ($i < @data - 1) {
-            $output .= ",";
-            $col++;
-        }
-    }
-    return $output;
-}
-
-sub qquote_line {
-    my $line = shift;
-
-    return "" if !defined($line);
-
-    my $output = "";
-    if (index($line, '"') >= 0) { # line contains " characters
-        $line =~ s/([\{\}])/\\$1/g;
-        $output .= "qq{$line}"; # quote using qq{}
-    }
-    else {
-        $output .= qq{"$line"}; # quote using ""
-    }
-    return $output;
-}
-
-sub qquote {
-    my $data = shift;
-    my $octets_per_line = shift || 16;
-
-    return "undef" if !defined($data);
-    return q{""} if length($data) == 0;
-
-    my $output = "";
-
-    if ($octets_per_line < 0) { # break at newlines
-        # escape special string characters
-        $data =~ s/([\\\@\$])/\\$1/g;
-        # escape null characters
-        $data =~ s/\0(?![0-9])/\\0/g;
-        $data =~ s/\0/\\c\@/g;
-        # escape newline characters, and add a real newline
-        $data =~ s/([\n])/\\n\n/g;
-        # escape unicode characters
-        $data =~ s/([^\x00-\xff])/sprintf("\\x{%04x}",ord($1))/ge;
-        # escape remaining non-ascii characters
-        $data =~ s/([^\0\n\x20-\x7e])/sprintf("\\x%02x",ord($1))/ge;
-        $output = join(".\n", map { qquote_line($_) } split("\n", $data));
-        $output .= "\n";
-    }
-    else { # break at $octets_per_line
-        if (($data =~ tr/\0\n\x20-\x7e//c) > 0) { # binary data
-            for (my $i = 0; $i < length($data); $i += $octets_per_line) {
-                my $line = substr($data, $i, $octets_per_line);
-                $line =~ s/([\x00-\xff])/sprintf("\\x%02x",ord($1))/ge;
-                $line =~ s/([^\x00-\xff])/sprintf("\\x{%04x}",ord($1))/ge;
-                $output .= qq{"$line"};
-                if ($i < (length($data) - $octets_per_line)) {
-                    $output .= ".\n"; # period and line break if not last line
-                }
-            }
-            $output .= "\n";
-        }
-        else { # text data
-            $octets_per_line *= 4;
-            for (my $i = 0; $i < length($data); $i += $octets_per_line) {
-                my $line = substr($data, $i, $octets_per_line);
-                # escape special string characters
-                $line =~ s/([\\\@\$])/\\$1/g;
-                # escape null characters
-                $line =~ s/\0(?![0-9])/\\0/g;
-                $line =~ s/\0/\\c\@/g;
-                # escape newline characters
-                $line =~ s/([\n])/\\n/g;
-                $output .= qquote_line($line);
-                if ($i < (length($data) - $octets_per_line)) {
-                    $output .= ".\n"; # period and line break if not last line
-                }
-            }
-            $output .= "\n";
+    my $end = length($data);
+    my $pos = 0;
+    my $num_octets = $end - $pos;
+    $num_octets = $max_octets if $num_octets > $max_octets;
+    while ($pos < $end) {
+        $output .= join(',', unpack("x$pos(H2)$num_octets", $data));
+        $pos += $num_octets;
+        $num_octets = $end - $pos;
+        $num_octets = 25 if $num_octets > 25;
+        if ($num_octets > 0) {
+            $output .= ",\\\n  ";
         }
     }
-
+    $output .= "\n";
     return $output;
 }
 
@@ -246,17 +189,17 @@ sub iso8601 {
     my $time = shift;
 
     if (!defined $time) {
-        return "(undefined)";
+        return '(undefined)';
     }
 
     # On Windows, gmtime will return undef if $time < 0 or > 0x7fffffff
     if ($time < 0 || $time > 0x7fffffff) {
-        return "(undefined)";
+        return '(undefined)';
     }
     my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday) = gmtime $time;
 
     # The final 'Z' indicates UTC ("zero meridian")
-    return sprintf "%04d-%02d-%02dT%02d:%02d:%02dZ",
+    return sprintf '%04d-%02d-%02dT%02d:%02d:%02dZ',
         1900+$year, 1+$mon, $mday, $hour, $min, $sec;
 }
 
@@ -289,11 +232,11 @@ sub unpack_unicode_string {
     }
 
     my $str_len = 0;
-    foreach my $v (unpack("v*", $data)) {
+    foreach my $v (unpack('v*', $data)) {
         $str_len += 2;
         last if $v == 0; # include the final null in the length
     }
-    my $str = decode("UCS-2LE", substr($data, 0, $str_len));
+    my $str = decode('UCS-2LE', substr($data, 0, $str_len));
 
     # The decode function from Encode may create invalid unicode characters
     # which cause subsequent warnings (e.g. during regex matching).
@@ -362,9 +305,9 @@ sub make_multiple_subkey_iterator {
 
     # check @keys contains keys
     if (@keys == 0 ||
-        grep { defined && !UNIVERSAL::isa($_, "Parse::Win32Registry::Key") }
+        grep { defined && !UNIVERSAL::isa($_, 'Parse::Win32Registry::Key') }
         @keys) {
-        croak "Usage: make_multiple_subkey_iterator\(\$key1, \$key2, ...\)";
+        croak 'Usage: make_multiple_subkey_iterator($key1, $key2, ...)';
     }
 
     my %subkeys_seen = ();
@@ -401,9 +344,9 @@ sub make_multiple_value_iterator {
 
     # check @keys contains keys
     if (@keys == 0 ||
-        grep { defined && !UNIVERSAL::isa($_, "Parse::Win32Registry::Key") }
+        grep { defined && !UNIVERSAL::isa($_, 'Parse::Win32Registry::Key') }
         @keys) {
-        croak "Usage: make_multiple_value_iterator\(\$key1, \$key2, ...\)";
+        croak 'Usage: make_multiple_value_iterator($key1, $key2, ...)';
     }
 
     my %values_seen = ();
@@ -440,18 +383,17 @@ sub make_multiple_subtree_iterator {
 
     # check @keys contains keys
     if (@keys == 0 ||
-        grep { defined && !UNIVERSAL::isa($_, "Parse::Win32Registry::Key") }
+        grep { defined && !UNIVERSAL::isa($_, 'Parse::Win32Registry::Key') }
         @keys) {
-        croak "Usage: make_multiple_subtree_iterator\(\$key1, \$key2, ...\)";
+        croak 'Usage: make_multiple_subtree_iterator($key1, $key2, ...)';
     }
 
-    my @subkeys_queue = (\@keys);
+    my @start_keys = (\@keys);
     push my (@subkey_iters), Parse::Win32Registry::Iterator->new(sub {
-        return shift @subkeys_queue;
+        return shift @start_keys;
     });
-#    make_multiple_subkey_iterator(@keys);
     my $value_iter;
-    my $subkeys;
+    my $subkeys; # used to remember subkeys while iterating values
 
     return Parse::Win32Registry::Iterator->new(sub {
         if (defined $value_iter && wantarray) {
@@ -478,9 +420,9 @@ sub compare_multiple_keys {
 
     # check @keys contains keys
     if (@keys == 0 ||
-        grep { defined && !UNIVERSAL::isa($_, "Parse::Win32Registry::Key") }
+        grep { defined && !UNIVERSAL::isa($_, 'Parse::Win32Registry::Key') }
         @keys) {
-        croak "Usage: compare_multiple_keys\(\$key1, \$key2, ...\)";
+        croak 'Usage: compare_multiple_keys($key1, $key2, ...)';
     }
 
     my @changes = ();
@@ -503,9 +445,9 @@ sub compare_multiple_values {
 
     # check @values contains values
     if (@values == 0 ||
-        grep { defined && !UNIVERSAL::isa($_, "Parse::Win32Registry::Value") }
+        grep { defined && !UNIVERSAL::isa($_, 'Parse::Win32Registry::Value') }
         @values) {
-        croak "Usage: compare_multiple_values\(\$value1, \$value2, ...\)";
+        croak 'Usage: compare_multiple_values($value1, $value2, ...)';
     }
 
     my @changes = ();
@@ -527,37 +469,37 @@ sub _compare_keys {
     my ($key1, $key2) = @_;
 
     if (!defined $key1 && !defined $key2) {
-        return ""; # "MISSING"
+        return ''; # 'MISSING'
     }
     elsif (defined $key1 && !defined $key2) {
-        return "DELETED";
+        return 'DELETED';
     }
     elsif (!defined $key1 && defined $key2) {
-        return "ADDED";
+        return 'ADDED';
     }
 
     my $timestamp1 = $key1->get_timestamp;
     my $timestamp2 = $key2->get_timestamp;
     if ($key1->get_name ne $key2->get_name) {
-        return "CHANGED";
+        return 'CHANGED';
     }
     elsif (defined $timestamp1 && defined $timestamp2) {
         if ($timestamp1 < $timestamp2) {
-            return "NEWER";
+            return 'NEWER';
         }
         elsif ($timestamp1 > $timestamp2) {
-            return "OLDER";
+            return 'OLDER';
         }
     }
     else {
-        return ""; # comment out to check values...
+        return ''; # comment out to check values...
         my $value_iter = make_multiple_value_iterator($key1, $key2);
         while (my ($val1, $val2) = $value_iter->get_next) {
             if (_compare_values($val1, $val2) ne '') {
-                return "VALUES";
+                return 'VALUES';
             }
         }
-        return "";
+        return '';
     }
 }
 
@@ -565,13 +507,13 @@ sub _compare_values {
     my ($val1, $val2) = @_;
 
     if (!defined $val1 && !defined $val2) {
-        return ""; # "MISSING"
+        return ''; # 'MISSING'
     }
     elsif (defined $val1 && !defined $val2) {
-        return "DELETED";
+        return 'DELETED';
     }
     elsif (!defined $val1 && defined $val2) {
-        return "ADDED";
+        return 'ADDED';
     }
 
     my $data1 = $val1->get_data;
@@ -580,12 +522,13 @@ sub _compare_values {
         $val1->get_type != $val2->get_type ||
          defined $data1 ne defined $data2 ||
         (defined $data1 && defined $data2 && $data1 ne $data2)) {
-        return "CHANGED";
+        return 'CHANGED';
     }
     else {
-        return "";
+        return '';
     }
 }
+
 
 package Parse::Win32Registry::Iterator;
 
@@ -595,7 +538,9 @@ sub new {
     my $class = shift;
     my $self = shift;
 
-    croak "Missing iterator subroutine" if ref $self ne 'CODE';
+    my $type = ref $self;
+    croak 'Missing iterator subroutine' if $type ne 'CODE'
+                                        && $type ne __PACKAGE__;
 
     bless $self, $class;
     return $self;
@@ -604,6 +549,7 @@ sub new {
 sub get_next {
     $_[0]->();
 }
+
 
 package Parse::Win32Registry::GUID;
 
@@ -619,8 +565,8 @@ sub new {
         return;
     }
 
-    my $guid = sprintf "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
-        unpack("VvvC2C6", $data);
+    my $guid = sprintf '{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}',
+        unpack('VvvC2C6', $data);
 
     my $self = {
         _guid => $guid,
@@ -643,6 +589,7 @@ sub get_length {
     return $self->{_length};
 }
 
+
 package Parse::Win32Registry::SID;
 
 sub new {
@@ -664,7 +611,7 @@ sub new {
         return;
     }
 
-    my ($rev, $num_sub_auths, $id_auth) = unpack("CCx5C", $data);
+    my ($rev, $num_sub_auths, $id_auth) = unpack('CCx5C', $data);
 
     if ($num_sub_auths == 0) {
         return;
@@ -677,7 +624,7 @@ sub new {
     }
 
     my @sub_auths = unpack("x8V$num_sub_auths", $data);
-    my $sid = "S-$rev-$id_auth-" . join("-", @sub_auths);
+    my $sid = "S-$rev-$id_auth-" . join('-', @sub_auths);
 
     my $self = {
         _sid => $sid,
@@ -690,50 +637,50 @@ sub new {
 
 # See KB243330 for a list of well known sids
 our %WellKnownSids = (
-    "S-1-0-0" => "Nobody",
-    "S-1-1-0" => "Everyone",
-    "S-1-3-0" => "Creator Owner",
-    "S-1-3-1" => "Creator Group",
-    "S-1-3-2" => "Creator Owner Server",
-    "S-1-3-3" => "Creator Group Server",
-    "S-1-5-1" => "Dialup",
-    "S-1-5-2" => "Network",
-    "S-1-5-3" => "Batch",
-    "S-1-5-4" => "Interactive",
-    "S-1-5-5-\\d+-\\d+" => "Logon Session",
-    "S-1-5-6" => "Service",
-    "S-1-5-7" => "Anonymous",
-    "S-1-5-8" => "Proxy",
-    "S-1-5-9" => "Enterprise Domain Controllers",
-    "S-1-5-10" => "Principal Self",
-    "S-1-5-11" => "Authenticated Users",
-    "S-1-5-12" => "Restricted Code",
-    "S-1-5-13" => "Terminal Server Users",
-    "S-1-5-18" => "Local System",
-    "S-1-5-19" => "Local Service",
-    "S-1-5-20" => "Network Service",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-500" => "Administrator",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-501" => "Guest",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-502" => "KRBTGT",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-512" => "Domain Admins",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-513" => "Domain Users",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-514" => "Domain Guests",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-515" => "Domain Computers",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-516" => "Domain Controllers",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-517" => "Cert Publishers",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-518" => "Schema Admins",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-519" => "Enterprise Admins",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-520" => "Group Policy Creator Owners",
-    "S-1-5-\\d+-\\d+-\\d+-\\d+-533" => "RAS and IAS Servers",
-    "S-1-5-32-544" => "Administrators",
-    "S-1-5-32-545" => "Users",
-    "S-1-5-32-546" => "Guest",
-    "S-1-5-32-547" => "Power Users",
-    "S-1-5-32-548" => "Account Operators",
-    "S-1-5-32-549" => "Server Operators",
-    "S-1-5-32-550" => "Print Operators",
-    "S-1-5-32-551" => "Backup Operators",
-    "S-1-5-32-552" => "Replicators",
+    'S-1-0-0' => 'Nobody',
+    'S-1-1-0' => 'Everyone',
+    'S-1-3-0' => 'Creator Owner',
+    'S-1-3-1' => 'Creator Group',
+    'S-1-3-2' => 'Creator Owner Server',
+    'S-1-3-3' => 'Creator Group Server',
+    'S-1-5-1' => 'Dialup',
+    'S-1-5-2' => 'Network',
+    'S-1-5-3' => 'Batch',
+    'S-1-5-4' => 'Interactive',
+    'S-1-5-5-\\d+-\\d+' => 'Logon Session',
+    'S-1-5-6' => 'Service',
+    'S-1-5-7' => 'Anonymous',
+    'S-1-5-8' => 'Proxy',
+    'S-1-5-9' => 'Enterprise Domain Controllers',
+    'S-1-5-10' => 'Principal Self',
+    'S-1-5-11' => 'Authenticated Users',
+    'S-1-5-12' => 'Restricted Code',
+    'S-1-5-13' => 'Terminal Server Users',
+    'S-1-5-18' => 'Local System',
+    'S-1-5-19' => 'Local Service',
+    'S-1-5-20' => 'Network Service',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-500' => 'Administrator',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-501' => 'Guest',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-502' => 'KRBTGT',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-512' => 'Domain Admins',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-513' => 'Domain Users',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-514' => 'Domain Guests',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-515' => 'Domain Computers',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-516' => 'Domain Controllers',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-517' => 'Cert Publishers',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-518' => 'Schema Admins',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-519' => 'Enterprise Admins',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-520' => 'Group Policy Creator Owners',
+    'S-1-5-\\d+-\\d+-\\d+-\\d+-533' => 'RAS and IAS Servers',
+    'S-1-5-32-544' => 'Administrators',
+    'S-1-5-32-545' => 'Users',
+    'S-1-5-32-546' => 'Guest',
+    'S-1-5-32-547' => 'Power Users',
+    'S-1-5-32-548' => 'Account Operators',
+    'S-1-5-32-549' => 'Server Operators',
+    'S-1-5-32-550' => 'Print Operators',
+    'S-1-5-32-551' => 'Backup Operators',
+    'S-1-5-32-552' => 'Replicators',
 );
 
 sub get_name {
@@ -760,6 +707,7 @@ sub get_length {
 
     return $self->{_length};
 }
+
 
 package Parse::Win32Registry::ACE;
 
@@ -794,7 +742,7 @@ sub new {
         return;
     }
 
-    my ($type, $flags, $ace_len) = unpack("CCv", $data);
+    my ($type, $flags, $ace_len) = unpack('CCv', $data);
 
     if (length($data) < $ace_len) {
         return;
@@ -809,7 +757,7 @@ sub new {
     # Only the following types are currently unpacked:
     # 0 (ACCESS_ALLOWED_ACE), 1 (ACCESS_DENIED_ACE), 2 (SYSTEM_AUDIT_ACE)
     if ($type >= 0 && $type <= 2) {
-        my $access_mask = unpack("x4V", $data);
+        my $access_mask = unpack('x4V', $data);
         my $sid = Parse::Win32Registry::SID->new(substr($data, 8,
                                                         $ace_len - 8));
 
@@ -886,7 +834,7 @@ sub as_string {
     my $self = shift;
 
     my $sid = $self->{_trustee};
-    my $string = sprintf "%s 0x%02x 0x%08x %s",
+    my $string = sprintf '%s 0x%02x 0x%08x %s',
         _look_up_ace_type($self->{_type}),
         $self->{_flags},
         $self->{_mask},
@@ -902,7 +850,10 @@ sub get_length {
     return $self->{_length};
 }
 
+
 package Parse::Win32Registry::ACL;
+
+use Carp;
 
 sub new {
     my $class = shift;
@@ -925,7 +876,7 @@ sub new {
         return;
     }
 
-    my ($rev, $acl_len, $num_aces) = unpack("Cxvv", $data);
+    my ($rev, $acl_len, $num_aces) = unpack('Cxvv', $data);
 
     if (length($data) < $acl_len) {
         return;
@@ -963,12 +914,16 @@ sub get_list_of_aces {
     return @{$self->{_acl}};
 }
 
+sub as_string {
+    croak 'Usage: ACLs do not have an as_string method; use as_stanza instead';
+}
+
 sub as_stanza {
     my $self = shift;
 
-    my $stanza = "";
+    my $stanza = '';
     foreach my $ace (@{$self->{_acl}}) {
-        $stanza .= "ACE: ". $ace->as_string . "\n";
+        $stanza .= 'ACE: '. $ace->as_string . "\n";
     }
     return $stanza;
 }
@@ -979,7 +934,10 @@ sub get_length {
     return $self->{_length};
 }
 
+
 package Parse::Win32Registry::SecurityDescriptor;
+
+use Carp;
 
 sub new {
     my $class = shift;
@@ -1025,7 +983,7 @@ sub new {
         $offset_to_owner,
         $offset_to_group,
         $offset_to_sacl,
-        $offset_to_dacl) = unpack("vvVVVV", $data);
+        $offset_to_dacl) = unpack('vvVVVV', $data);
 
     my %sd = ();
     my $sd_len = 20;
@@ -1089,30 +1047,34 @@ sub get_dacl {
     return $self->{_dacl};
 }
 
+sub as_string {
+    croak 'Usage: Security Descriptors do not have an as_string method; use as_stanza instead';
+}
+
 sub as_stanza {
     my $self = shift;
 
-    my $stanza = "";
+    my $stanza = '';
     if (defined(my $owner = $self->{_owner})) {
-        $stanza .= "Owner SID: " . $owner->as_string;
+        $stanza .= 'Owner SID: ' . $owner->as_string;
         my $name = $owner->get_name;
         $stanza .= " [$name]" if defined $name;
         $stanza .= "\n";
     }
     if (defined(my $group = $self->{_group})) {
-        $stanza .= "Group SID: " . $group->as_string;
+        $stanza .= 'Group SID: ' . $group->as_string;
         my $name = $group->get_name;
         $stanza .= " [$name]" if defined $name;
         $stanza .= "\n";
     }
     if (defined(my $sacl = $self->{_sacl})) {
         foreach my $ace ($sacl->get_list_of_aces) {
-            $stanza .= "SACL ACE: " . $ace->as_string . "\n";
+            $stanza .= 'SACL ACE: ' . $ace->as_string . "\n";
         }
     }
     if (defined(my $dacl = $self->{_dacl})) {
         foreach my $ace ($dacl->get_list_of_aces) {
-            $stanza .= "DACL ACE: " . $ace->as_string . "\n";
+            $stanza .= 'DACL ACE: ' . $ace->as_string . "\n";
         }
     }
     return $stanza;

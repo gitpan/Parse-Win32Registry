@@ -3,13 +3,11 @@ use warnings;
 
 use Test::More 'no_plan';
 use Data::Dumper;
-use Parse::Win32Registry 0.51 qw(:REG_ make_multiple_subtree_iterator);
+use Parse::Win32Registry 0.60 qw(:REG_ make_multiple_subtree_iterator);
 
 $Data::Dumper::Useqq = 1;
 $Data::Dumper::Terse = 1;
 $Data::Dumper::Indent = 0;
-
-Parse::Win32Registry::disable_warnings;
 
 sub find_file
 {
@@ -38,12 +36,12 @@ sub run_subtree_iterator_tests
 
         ok(defined $key, "$desc key defined (valid key)");
         is($key->get_path, $key_path,
-            "$desc key get_path eq " . Dumper($key_path));
+            "$desc key get_path");
 
         if (defined $value_name) {
             ok(defined $value, "$desc value defined (valid value)");
             is($value->get_name, $value_name,
-                "$desc value get_name eq " . Dumper($value_name));
+                "$desc value get_name");
         }
         else {
             ok(!defined $value, "$desc value undefined (no value)");
@@ -68,7 +66,7 @@ sub run_subtree_iterator_tests
 
         ok(defined $key, "$desc key defined (valid key)");
         is($key->get_path, $key_path,
-            "$desc key get_path eq " . Dumper($key_path));
+            "$desc key get_path");
     }
     my $final = $subtree_iter->get_next;
     ok(!defined $final, "$os (scalar) iterator empty");
@@ -84,7 +82,7 @@ sub run_multiple_subtree_iterator_tests {
 
     my $subtree_iter = make_multiple_subtree_iterator($key);
     ok(defined $subtree_iter,
-        "$os (list) make_multiple_subtree_iterator defined");
+        "$os make_multiple_subtree_iterator defined");
     isa_ok($subtree_iter, "Parse::Win32Registry::Iterator");
     for (my $i = 0; $i < @tests; $i++) {
         my ($key_path, $value_name) = @{$tests[$i]};
@@ -93,19 +91,19 @@ sub run_multiple_subtree_iterator_tests {
 
         my $desc = "$os (list) TEST" . ($i + 1);
 
-        ok(defined $keys_ref, "$desc keys_ref defined");
+        ok(defined $keys_ref, "$desc keys_ref defined (valid keys)");
         is(ref $keys_ref, 'ARRAY', "$desc keys_ref array");
         is($keys_ref->[0]->get_path, $key_path,
-            "$desc keys_ref->[0] get_path eq " . Dumper($key_path));
+            "$desc keys_ref->[0] get_path");
 
         if (defined $value_name) {
-            ok(defined $values_ref, "$desc values_ref defined");
+            ok(defined $values_ref, "$desc values_ref defined (valid values)");
             is(ref $values_ref, 'ARRAY', "$desc values_ref array");
             is($values_ref->[0]->get_name, $value_name,
-                "$desc values_ref->[0] get_name eq " . Dumper($value_name));
+                "$desc values_ref->[0] get_name");
         }
         else {
-            ok(!defined $values_ref, "$desc values_ref undefined");
+            ok(!defined $values_ref, "$desc values_ref undefined (no values)");
         }
     }
     my @final = $subtree_iter->get_next;
@@ -117,7 +115,7 @@ sub run_multiple_subtree_iterator_tests {
 
     $subtree_iter = make_multiple_subtree_iterator($key);
     ok(defined $subtree_iter,
-        "$os (scalar) make_multiple_subtree_iterator defined");
+        "$os make_multiple_subtree_iterator defined");
     isa_ok($subtree_iter, "Parse::Win32Registry::Iterator");
     for (my $i = 0; $i < @tests; $i++) {
         my ($key_path, $value_name) = @{$tests[$i]};
@@ -126,10 +124,10 @@ sub run_multiple_subtree_iterator_tests {
 
         my $desc = "$os (scalar) TEST" . ($i + 1);
 
-        ok(defined $keys_ref, "$desc keys_ref defined");
+        ok(defined $keys_ref, "$desc keys_ref defined (valid keys)");
         is(ref $keys_ref, 'ARRAY', "$desc keys_ref array");
         is($keys_ref->[0]->get_path, $key_path,
-            "$desc keys_ref->[0] get_path eq " . Dumper($key_path));
+            "$desc keys_ref->[0] get_path");
     }
     my $final = $subtree_iter->get_next;
     ok(!defined $final, "$os (scalar) iterator empty");

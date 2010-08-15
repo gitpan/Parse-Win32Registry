@@ -1,9 +1,10 @@
 package Parse::Win32Registry;
 
+use 5.008_001;
 use strict;
 use warnings;
 
-our $VERSION = '0.51';
+our $VERSION = '0.60';
 
 use base qw(Exporter);
 
@@ -36,6 +37,25 @@ sub enable_warnings {
 
 sub disable_warnings {
     $Parse::Win32Registry::Base::WARNINGS = 0;
+}
+
+sub enable_trace {
+    $Parse::Win32Registry::Base::TRACE = 1;
+}
+
+sub disable_trace {
+    $Parse::Win32Registry::Base::TRACE = 0;
+}
+
+sub set_codepage {
+    my $codepage = shift;
+    if (defined $codepage) {
+        $Parse::Win32Registry::Base::CODEPAGE = $codepage;
+    }
+}
+
+sub get_codepage {
+    $Parse::Win32Registry::Base::CODEPAGE;
 }
 
 sub new {
@@ -219,8 +239,18 @@ The module is intended to be cross-platform, and run on those platforms
 where Perl will run.
 
 It supports both
-Windows NT registry files (Windows NT, 2000, XP, 2003, Vista)
-and Windows 95 registry files (Windows 95, 98, and Millennium Edition).
+Windows NT registry files (Windows NT, 2000, XP, 2003, Vista, 7)
+and Windows 95 registry files (Windows 95, 98, Millennium Edition).
+
+It is intended to be used to parse offline registry files.
+If a registry file is currently in use, you will not be able to open it.
+However, you can save part or all of a currently loaded registry file
+using the Windows reg command
+if you have the appropriate administrative access.
+
+=head1 DEPENDENCIES
+
+Requires Perl 5.8.1. All required modules are standard modules.
 
 =head1 METHODS
 
@@ -251,7 +281,7 @@ Returns the root Key object of the registry file.
 
 The root key of a registry file is not the same as one of the virtual
 roots of the registry (HKEY_LOCAL_MACHINE, HKEY_USERS, etc) that you
-may be familiar with from using tools such as REGEDIT.
+might be familiar with from using tools such as REGEDIT.
 
 The names of root keys vary by operating system and by file.
 For example, the name of the root key of a Windows XP NTUSER.DAT file
@@ -430,10 +460,6 @@ If used in conjunction with the get_virtual_root_key method
 of Registry objects this should generate key paths
 interoperable with those exported by REGEDIT.
 
-=item $key->print_summary
-
-Prints $key->as_string to standard output.
-
 =item $key->get_parent
 
 Returns a Key object for parent of the current key.
@@ -478,7 +504,7 @@ It can be used as follows:
     }
 
 Note that it is usually simpler to just use $key->get_list_of_subkeys.
-An iterator may be useful when you need to
+An iterator might be useful when you need to
 control the amount of processing you are performing,
 such as programs that need to remain responsive to user actions.
 
@@ -553,7 +579,7 @@ Keys will be returned in the following order:
     root_key\key1\key2
 
 
-Note that it may be simpler to write a recursive function
+Note that it might be simpler to write a recursive function
 to process the keys and values.
 
     sub traverse {
@@ -704,10 +730,6 @@ those values that do not have names.
 This should generate values
 interoperable with those exported by REGEDIT.
 
-=item $value->print_summary
-
-Prints $value->as_string to standard output.
-
 =back
 
 =head2 Security Object Methods
@@ -835,7 +857,7 @@ Returns an integer containing the ACE flags.
 =item $ace->get_access_mask
 
 Returns an integer containing the ACE access mask.
-The access mask controls what actions the trustee may perform with
+The access mask controls what actions the trustee might perform with
 the object the ACE applies to.
 
 =item $ace->get_trustee
@@ -1024,8 +1046,11 @@ These functions are exported on request:
 
 Returns the ISO8601 string for the supplied $epoch_time,
 for example, '2010-05-30T13:57:11Z'.
+It assumes the supplied $epoch_time is in UTC,
+and appends 'Z' to indicate this.
 
-The string '(undefined)' will be returned if the epoch time is out of range.
+The string '(undefined)' will be returned if the epoch time
+is out of range.
 
     my $data = $reg_binary_value->get_data;
 
@@ -1046,7 +1071,7 @@ There are a number of ways of displaying a timestamp. For example:
     print strftime("%Y-%m-%d %H:%M:%S Local",
                    localtime($key->get_timestamp)), "\n";
 
-Which might produce the following output:
+...might produce the following output:
 
     2000-08-06T23:42:36Z
     Sun Aug  6 23:42:36 2000 GMT
@@ -1079,7 +1104,7 @@ These functions are exported on request:
 Handling lists of subkeys or values
 should be done with a little care
 as some of the processed registry files
-may not contain the subkey or value being examined
+might not contain the subkey or value being examined
 and the list will contain missing entries:
 
     ($key1, $key2, undef, $key4)
@@ -1229,47 +1254,27 @@ You can count the number of changed values using the grep operator:
 
 =head1 HANDLING INVALID DATA
 
-Since version 0.50 the Parse::Win32Registry library
-can display warnings to indicate errors with the registry file being read.
-This has to be switched on using:
+The Parse::Win32Registry module will skip keys or values
+that cannot be successfully parsed.
 
-    Parse::Win32Registry->enable_warnings;
+If keys or values cannot be parsed, then
+the get_subkey and get_value methods of Key objects
+will return nothing.
 
-It can be switched off again with:
+The get_list_of_subkeys and get_list_of_values methods of Key objects
+will skip those keys or values that cannot be parsed.
+If none of the keys or values can be parsed successfully,
+an empty list will be returned.
 
-    Parse::Win32Registry->disable_warnings;
-
-If the parser is unable to successfully parse the current registry entry,
-nothing will be returned.
-$key->get_subkey or $key->get_value
-will return an undefined value (and display a warning).
-$key->get_list_of_subkeys or $key->get_list_of_values
-will return an empty list (and display warnings)
-if all of the subkeys or values cannot be parsed.
-If only some of the subkeys or values cannot be parsed,
-then a partial list will be returned
-(and warnings displayed only for those subkeys or values
-that could not be parsed).
-
-However, some errors are survivable,
-and allow the creation of keys and values with incomplete information.
-Specifically,
-Windows 95 keys store their information in two different sections
-of the registry file.
-If information is only retrieved from the first section,
-a Key object will be created,
-but it will have no name and no values.
-$key->get_name will return an empty string and
-$key->get_list_of_values will return an empty list.
-Windows NT values generally store their data
-in a separate area from the value information.
+Additionally, values (in Windows NT registry files)
+often store data in a separate area of the registry file.
 If the value can be parsed, but the data cannot,
 a Value object will be created,
 but it will have no data.
-$value->get_data will return nothing.
+The get_data method will return nothing.
 
 The most robust way of handling keys or values or data
-is to check that they are defined before processing them.
+is therefore to check that they are defined before processing them.
 For example:
 
     my $key = $root_key->get_subkey( "Software\\Perl" );
@@ -1285,23 +1290,66 @@ For example:
         }
     }
 
-You may not feel this robustness is required for smaller scripts.
+You might not feel this robustness is necessary for your scripts.
 
-=head1 LOWER LEVEL METHODS FOR PROCESSING REGISTRY FILES
+You can be alerted when there are problems parsing registry keys or values
+by switching on warnings with:
+
+    Parse::Win32Registry->enable_warnings;
+
+They can be switched off again with:
+
+    Parse::Win32Registry->disable_warnings;
+
+=head1 LOW-LEVEL METHODS
 
 These methods are intended for those
 who want to look at the structure of a registry file,
 but with something a little more helpful than a hex editor.
+They are not designed for pulling data out of keys and values:
+they are designed to make it easier to look at the underlying
+components of a registry file.
 
-They are not designed for pulling data out of keys and values.
-They are designed for providing technical information about keys and values.
+Windows NT registry files are composed of one or more Hbin blocks.
+Hbin blocks can contain a series of entries,
+such as key, value, and security entries,
+but also includes subkey lists, value lists, key class names, and value data.
 
-Most of these methods are demonstrated by the supplied regscan.pl
-and regscope.pl scripts.
+Windows 95 registry files are composed of an RGKN block,
+followed by one or more RGDB blocks.
+RGKN blocks contain the entries which link the registry keys
+in the form of a tree.
+RGDB blocks contain a corresponding entry for each key in the RGKN block.
+This RGDB entry includes the name of the key and any associated values.
+For convenience, when iterating the entries in an RGDB block,
+each will be returned as a key entry followed by zero or more value entries.
+
+To see demonstrations of how these methods can be used,
+look at the regscan.pl, gtkregscope.pl, and wxregscope.pl scripts.
 
 =head2 Registry Object Methods
 
 =over 4
+
+=item $registry->get_block_iterator
+
+Returns an iterator for retrieving all the blocks in a registry file.
+Each time the get_next method of the iterator is used,
+it will return a single Block object.
+Blocks will be returned one by one
+until the end of the registry file is reached,
+when nothing will be returned.
+
+Typically you would iterate over all the blocks in a registry file,
+and iterate over all the entries in each block:
+
+    my $block_iter = $registry->get_block_iterator;
+    while (my $block = $block_iter->get_next) {
+        my $entry_iter = $block->get_entry_iterator;
+        while (my $entry = $entry_iter->get_next) {
+            ...
+        }
+    }
 
 =item $registry->get_entry_iterator
 
@@ -1312,88 +1360,74 @@ Entries will be returned one by one
 until the end of the registry file is reached,
 when nothing will be returned.
 
-    my $entry_iter = $registry->get_entry_iterator;
-    while (my $entry = $entry_iter->get_next) {
-        ...
-    }
-
-This replaces the following approach introduced in 0.40:
-
-    $registry->move_to_first_entry;
-    while (my $entry = $registry->get_next_entry) {
-        ...
-    }
-
-=item $registry->get_hbin_iterator
-
-Returns an iterator for retrieving all the hbins in a registry file.
-Windows NT registry files are composed of hbins,
-with each hbin actually containing the entries.
-Each time the get_next method of the iterator is used,
-it will return a single Hbin object.
-Hbins will be returned one by one
-until the end of the registry file is reached,
-when nothing will be returned.
-
-This method returns nothing for Windows 95 registry files.
-
-So for Windows NT registry files,
-instead of using $registry->get_entry_iterator
-entries can also be processed one hbin at a time:
-
-    my $hbin_iter = $registry->get_hbin_iterator;
-    while (my $hbin = $hbin_iter->get_next) {
-        my $entry_iter = $hbin->get_entry_iterator;
-        while (my $entry = $entry_iter->get_next) {
-            ...
-        }
-    }
+This is simply a more convenient method for retrieving
+all the entries in a registry file,
+which does not require you to iterate over each block.
 
 =back
 
-=head2 Hbin Object Methods
+=head2 Block Object Methods
 
 =over 4
 
-=item $hbin->get_entry_iterator
+=item $block->get_entry_iterator
 
-Returns an iterator for retrieving all the entries in an hbin.
+Returns an iterator for retrieving all the entries in a block.
 Each time the get_next method of the iterator is used,
 it will return a single Entry object.
 Entries will be returned one by one
-until the end of the hbin is reached,
+until the end of the block is reached,
 when nothing will be returned.
 
-    my $entry_iter = $hbin->get_entry_iterator;
+    my $entry_iter = $block->get_entry_iterator;
     while (my $entry = $entry_iter->get_next) {
         ...
     }
 
-=item $hbin->get_offset
+=item $block->get_offset
 
-Returns the position of the hbin relative to the start of the file.
+Returns the position of the block relative to the start of the file.
 
-=item $hbin->get_length
+=item $block->get_length
 
-Returns the length of the hbin.
+Returns the length of the block.
 
-=item $hbin->parse_info
+=item $block->parse_info
 
 Returns a string containing a summary of the parser information
-for the hbin.
+for the block.
 
-=item $entry->unparsed
+=item $block->unparsed
 
 Returns a string containing a hex dump
-of the unparsed on-disk data for the hbin header.
+of the unparsed on-disk data for the block header.
 
-=item $entry->get_raw_bytes
+=item $block->get_raw_bytes
 
-Returns the unparsed on-disk data for the hbin header.
+Returns the unparsed on-disk data for the block header.
 
 =back
 
 =head2 Entry Object Methods
+
+In addition to the basic methods provided by all entries,
+if an entry is a key, value, or security entry,
+it will also provide the methods available to
+Key, Value, or Security objects.
+You might therefore find it useful to check what methods
+are available so that you can use them:
+
+    # use Entry object methods...
+    ...
+    if ($entry->can('get_subkey')) {
+        # use Key object methods...
+    }
+    elsif ($entry->can('get_data')) {
+        # use Value object methods...
+    }
+    elsif ($entry->can('get_security_descriptor')) {
+        # use Security object methods...
+    }
 
 =over 4
 
@@ -1404,10 +1438,6 @@ Returns the position of the entry relative to the start of the file.
 =item $entry->get_length
 
 Returns the length of the entry.
-
-Entries in Windows NT registry files vary in size;
-entries in Windows 95 registry files are always 28 bytes in size
-(as only the RGKN block is examined).
 
 =item $entry->get_tag
 
@@ -1420,21 +1450,23 @@ These are:
 'vk' for values;
 'sk' for security entries;
 and 'lf', 'lh', 'li', or 'ri' for subkey lists.
-Entries that do not have signatures will return ''.
+Entries that do not have signatures will return an empty string.
 Unidentified entries include
 value lists, value data, and the class names of keys.
 
 For Windows 95 registry files, the tag
-reflects the part of the registry file the entry is from
-and is always set to 'rgkn'.
+reflects which part of the registry file the entry is from,
+and will be
+'rgkn key',
+'rgdb key',
+or 'rgdb value'.
 
 =item $entry->is_allocated
 
 Returns a boolean value indicating the 'allocated' state of a
 Windows NT registry entry.
 
-This value has no meaning for Windows 95 registry entries,
-and is always set to 0.
+This value has no meaning for Windows 95 registry entries.
 
 =item $entry->as_string
 
@@ -1460,30 +1492,6 @@ of the unparsed on-disk data for the entry.
 
 Returns the unparsed on-disk data for the entry.
 
-=item $entry->looks_like_key
-
-Returns a boolean indicating whether this entry
-can be successfully parsed as a Key object.
-If it returns true, then
-the entry will support all the methods provided by Key objects
-(e.g. get_timestamp, get_list_of_subkeys, get_list_of_values, etc.)
-
-=item $entry->looks_like_value
-
-Returns a boolean indicating whether this entry
-can be successfully parsed as a Value object.
-If it returns true, then
-the entry will support all the methods provided by Value objects
-(e.g. get_type, get_data, etc.)
-
-=item $entry->looks_like_security
-
-Returns a boolean indicating whether this entry
-can be successfully parsed as a Security object.
-If it returns true, then
-the entry will support all the methods provided by Security objects
-(e.g. get_security_descriptor, etc.)
-
 =back
 
 =head1 SCRIPTS
@@ -1492,11 +1500,12 @@ All of the supplied scripts are intended to be used either as tools
 or as examples for you to modify and develop.
 
 Try regdump.pl or regshell.pl to look at a registry file
-from the command line, or regview.pl if you want a GUI.
+from the command line,
+or gtkregview.pl or wxregview.pl if you want a GUI.
 If you want to compare registry files,
 try regmultidiff.pl from the command line
-or regcompare.pl if you want a GUI.
-Edit the scripts to customize them for your own requirements.
+or gtkregcompare.pl or wxregcompare.pl if you want a GUI.
+You can edit the scripts to customize them for your own requirements.
 
 If you specify subkeys on the command line, note that you need to
 quote the subkey on Windows if it contains spaces:
@@ -1507,9 +1516,50 @@ You will also need to quote backslashes and spaces in Unix shells:
 
     regdump.pl ntuser.dat software\\microsoft\\windows\ nt
 
-unless you use single quotes:
+or use single quotes:
 
     regdump.pl ntuser.dat 'software\microsoft\windows nt'
+
+=head2 gtkregcompare.pl
+
+gtkregcompare.pl is a GTK+ program for comparing multiple registry files.
+It displays a tree of the registry keys and values
+highlighting those that have changed.
+
+It requires Gtk2-Perl to be installed.
+
+Filenames of registry files to compare can be supplied on the command line:
+
+    gtkregcompare.pl <filename1> <filename2> <filename3> ...
+
+You can of course use wildcards when running from a Unix shell.
+
+=head2 gtkregscope.pl
+
+gtkregscope.pl is a GTK+ registry scanner.
+It presents all the entries in a registry file returned by the
+get_block_iterator and get_entry_iterator methods.
+It uses color to highlight key, value, security, and subkey list entries,
+and presents the block as a colored map.
+
+It requires Gtk2-Perl to be installed.
+
+A filename can also be supplied on the command line:
+
+    gtkregscope.pl <filename>
+
+=head2 gtkregview.pl
+
+gtkregview.pl is a GTK+ registry viewer.
+It displays a tree of registry keys on the left hand side,
+a list of values on the right,
+and a hex dump of the selected value data at the bottom.
+
+It requires Gtk2-Perl to be installed.
+
+A filename can also be supplied on the command line:
+
+    gtkregview.pl <filename>
 
 =head2 regclassnames.pl
 
@@ -1519,23 +1569,6 @@ Only a very few Windows NT registry key have class names.
 Type regclassnames.pl on its own to see the help:
 
     regclassnames.pl <filename> [subkey]
-
-=head2 regcompare.pl
-
-regcompare.pl is a GTK+ program for comparing multiple registry files.
-It displays a tree of the registry keys and values
-highlighting the changed keys and values,
-and a table detailing the actual changes.
-
-It requires Gtk2-Perl to be installed.
-Links to Windows binaries can be found via the project home page at
-L<http://gtk2-perl.sourceforge.net/win32/>.
-
-Filenames of registry files to compare can be supplied on the command line:
-
-    regcompare.pl <filename1> <filename2> <filename3> ...
-
-You can of course use wildcards when running from a Unix shell.
 
 =head2 regdump.pl
 
@@ -1632,11 +1665,11 @@ and identify the differences between them.
 
 Type regmultidiff.pl on its own to see the help:
 
-    regmultidiff.pl <file1> <file2> <file3> ... [<subkey>] [-v] [-x] [-a]
+    regmultidiff.pl <file1> <file2> <file3> ... [<subkey>] [-v] [-x] [-l] [-a]
         -v or --values      display values
         -x or --hexdump     display value data as a hex dump
-        -a or --all         show all keys and values preceding and following
-                            any changes
+        -l or --long        show each changed key or value instead of a summary
+        -a or --all         show all keys and values before and after a change
 
 You can limit the comparison by specifying an initial subkey.
 
@@ -1657,23 +1690,6 @@ Type regscan.pl on its own to see the help:
                             instead of the string representation
         -u or --unparsed    show the unparsed on-disk entries as a hex dump
         -w or --warnings    display warnings of invalid keys and values
-
-=head2 regscope.pl
-
-regscope.pl is a GTK+ registry scanner.
-It presents all the entries in a registry file returned by the
-get_hbin_iterator and get_entry_iterator methods.
-When viewing Windows NT registry files, it uses color to highlight
-key, value, security, and subkey list entries, and presents the hbin
-as a colored map.
-
-It requires Gtk2-Perl to be installed.
-Links to Windows binaries can be found via the project home page at
-L<http://gtk2-perl.sourceforge.net/win32/>.
-
-A filename can also be supplied on the command line:
-
-    regscope.pl <filename>
 
 =head2 regsecurity.pl
 
@@ -1742,31 +1758,57 @@ Type regtree.pl on its own to see the help:
     regtree.pl <filename> [subkey] [-v]
         -v or --values      display values
 
-=head2 regview.pl
+=head2 wxregcompare.pl
 
-regview.pl is a GTK+ registry viewer.
-It displays a tree of registry keys on the left hand side,
-a list of values on the right,
-and a hex dump of the selected value data at the bottom.
+wxregcompare.pl is a wxWidgets program for comparing multiple registry files.
+It displays a tree of the registry keys and values,
+highlighting those that have changed.
 
-It requires Gtk2-Perl to be installed.
-Links to Windows binaries can be found via the project home page at
-L<http://gtk2-perl.sourceforge.net/win32/>.
+It requires wxPerl to be installed.
+
+Filenames of registry files to compare can be supplied on the command line:
+
+    wxregcompare.pl <filename1> <filename2> <filename3> ...
+
+You can of course use wildcards when running from a Unix shell.
+
+=head2 wxregscope.pl
+
+wxregscope.pl is a wxWidgets registry scanner.
+It presents all the entries in a registry file returned by the
+get_block_iterator and get_entry_iterator methods.
+It uses color to highlight key, value, security, and subkey list entries.
+
+It requires wxPerl to be installed.
 
 A filename can also be supplied on the command line:
 
-    regview.pl <filename>
+    wxregscope.pl <filename>
+
+=head2 wxregview.pl
+
+wxregview.pl is a wxWidgets registry viewer.
+It displays a tree of registry keys on the left hand side,
+a list of values on the right,
+and a hex dump of the selected value data at the bottom.
+It can also provide a timeline view of all of the registry keys,
+which can be used to navigate the main tree view
+by clicking or double-clicking on a timeline key.
+
+It requires wxPerl to be installed.
+
+A filename can also be supplied on the command line:
+
+    wxregview.pl <filename>
 
 =head1 ACKNOWLEDGEMENTS
 
 This would not have been possible without the work of those people who have
-analysed and documented the structure of Windows Registry files, namely:
-the WINE Project (see misc/registry.c in older releases),
-the Samba Project (see utils/editreg.c and utils/profiles.c in older releases),
-Petter Nordahl-Hagen (see chntpw's ntreg.h),
-and B.D. (see WinReg.txt).
-
-I'm grateful to those who have sent me their thanks.
+analysed and shared their knowledge of the structure of Windows Registry files,
+primarily:
+B.D. (WinReg.txt),
+Petter Nordahl-Hagen (chntpw),
+and Richard Sharpe and Jerry Carter (Samba 3).
 
 =head1 AUTHOR
 
@@ -1774,7 +1816,7 @@ James Macfarlane, E<lt>jmacfarla@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2006,2007,2008,2009 by James Macfarlane
+Copyright (C) 2006,2007,2008,2009,2010 by James Macfarlane
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

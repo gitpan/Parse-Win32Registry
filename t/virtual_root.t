@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-use Parse::Win32Registry 0.50;
+use Parse::Win32Registry 0.60;
 
 sub find_file
 {
@@ -52,19 +52,19 @@ sub find_file
         $filename = find_file($filename);
 
         my $registry = Parse::Win32Registry->new($filename);
-        ok(defined($registry), 'registry defined');
+        ok(defined($registry), 'registry defined (valid registry)');
         my $root_key = $registry->get_virtual_root_key;
-        ok(defined($root_key), 'root key defined');
+        ok(defined($root_key), 'root key defined (valid key)');
         is($root_key->get_name, $virtual_root,
-            qq{root key get_name eq "$virtual_root"});
+            "root key get_name (virtual name)");
         isnt($root_key->get_name, $original_root_key_name,
-            qq{root key get_name ne "$original_root_key_name"});
+            "root key get_name (original name)");
 
         foreach my $key_name (@$key_names) {
             my $key = $root_key->get_subkey($key_name);
             my $virtual_path = "$virtual_root\\$key_name";
             is($key->get_path, $virtual_path,
-                qq{subkey get_path eq "$virtual_path"});
+                "subkey get_path (virtual path)");
         }
     }
 }

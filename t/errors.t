@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-use Parse::Win32Registry 0.50 qw(:functions);
+use Parse::Win32Registry 0.60 qw(:functions);
 
 Parse::Win32Registry::enable_warnings;
 
@@ -200,14 +200,14 @@ my @tests = (
     },
     ### USAGE ERRORS
     {
-        filename => 'winnt_key_tests.rf',
+        filename => 'winnt_error_tests.rf',
         class => 'Parse::Win32Registry::WinNT::Key',
         offset => 0x1020,
         method => '$result = $object->get_subkey(undef)',
         fatal_error => q{Usage: get_subkey\('key name'\)},
     },
     {
-        filename => 'winnt_value_tests.rf',
+        filename => 'winnt_error_tests.rf',
         class => 'Parse::Win32Registry::WinNT::Key',
         offset => 0x1020,
         method => '$result = $object->get_value(undef)',

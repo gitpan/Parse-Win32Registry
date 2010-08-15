@@ -1,8 +1,13 @@
 use strict;
 use warnings;
 
+use Data::Dumper;
 use Test::More 'no_plan';
-use Parse::Win32Registry 0.50;
+use Parse::Win32Registry 0.60;
+
+$Data::Dumper::Useqq = 1;
+$Data::Dumper::Terse = 1;
+$Data::Dumper::Indent = 0;
 
 sub find_file
 {
@@ -30,13 +35,14 @@ sub run_key_tests
 
         my $key_path = "$root_key_name\\$path";
 
-        my $desc = "$os \"$name\"";
+        my $desc = "$os " . Dumper($name);
 
         my $key = $root_key->get_subkey($path);
-        ok(defined($key), "$desc key defined");
+        ok(defined($key), "$desc key defined (valid key)")
+            or diag Dumper $key_path;
         ok(!$key->is_root, "$desc key is not root");
-        is($key->get_name, $name, "$desc get_name eq '$name'");
-        is($key->get_path, $key_path, "$desc get_path eq '$key_path'");
+        is($key->get_name, $name, "$desc get_name");
+        is($key->get_path, $key_path, "$desc get_path");
 
         my @subkeys = $key->get_list_of_subkeys;
         is(@subkeys, $num_subkeys, "$desc has $num_subkeys subkeys");
@@ -46,17 +52,15 @@ sub run_key_tests
 
         if (defined($timestamp)) {
             cmp_ok($key->get_timestamp, '==', $timestamp,
-                "$desc get_timestamp == $timestamp"
-            );
+                "$desc get_timestamp");
         }
         else {
-            ok(!defined($key->get_timestamp), "$desc get_timestamp undefined");
+            ok(!defined($key->get_timestamp),
+                "$desc get_timestamp undefined");
         }
 
         is($key->get_timestamp_as_string,
-            $timestamp_as_string,
-            "$desc get_timestamp_as_string eq '$timestamp_as_string'"
-        );
+            $timestamp_as_string, "$desc get_timestamp_as_string");
 
         if (defined($class_name)) {
             is($key->get_class_name, $class_name, "$desc get_class_name");
@@ -75,18 +79,16 @@ sub run_key_tests
 
         # parent key tests
         my $parent_key = $key->get_parent;
-        ok(defined($parent_key), "$desc parent key defined");
+        ok(defined($parent_key), "$desc parent key defined (valid key)");
 
         # $parent_key->get_subkey should be the same as key
         my $clone_key = $parent_key->get_subkey($name);
-        ok(defined($clone_key), "$desc parent subkey defined");
+        ok(defined($clone_key), "$desc parent subkey defined (valid key)");
         is($clone_key->get_path, "$key_path",
-            "$desc parent subkey get_path eq '$key_path'");
+            "$desc parent subkey get_path");
         is($clone_key->get_timestamp_as_string,
             $timestamp_as_string,
-            "$desc parent subkey get_timestamp_as_string" .
-            " eq '$timestamp_as_string'"
-        );
+            "$desc parent subkey get_timestamp_as_string");
 
         is($key->regenerate_path, $key_path, "$desc regenerate_path");
         is($key->get_path, $key_path, "$desc get_path after regenerate_path");
@@ -112,108 +114,140 @@ sub run_key_tests
 
     my @tests = (
         {
-            path => 'key1',
-            name => 'key1',
+            path => "key1",
+            name => "key1",
             num_subkeys => 3,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => 'key2',
-            name => 'key2',
+            path => "key1\\key4",
+            name => "key4",
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => undef,
+            timestamp_as_string => "(undefined)",
+        },
+        {
+            path => "key1\\key5",
+            name => "key5",
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => undef,
+            timestamp_as_string => "(undefined)",
+        },
+        {
+            path => "key1\\key6",
+            name => "key6",
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => undef,
+            timestamp_as_string => "(undefined)",
+        },
+        {
+            path => "key2",
+            name => "key2",
             num_subkeys => 6,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => 'key1\\key3',
-            name => 'key3',
+            path => "key2\\key7",
+            name => "key7",
             num_subkeys => 0,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => 'key1\\key4',
-            name => 'key4',
+            path => "key2\\key8",
+            name => "key8",
             num_subkeys => 0,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => 'key1\\key5',
-            name => 'key5',
+            path => "key2\\key9",
+            name => "key9",
             num_subkeys => 0,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => 'key2\\key6',
-            name => 'key6',
+            path => "key2\\key10",
+            name => "key10",
             num_subkeys => 0,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => 'key2\\key7',
-            name => 'key7',
+            path => "key2\\key11",
+            name => "key11",
             num_subkeys => 0,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => 'key2\\key8',
-            name => 'key8',
+            path => "key2\\key12",
+            name => "key12",
             num_subkeys => 0,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => 'key2\\key9',
-            name => 'key9',
+            path => "key3",
+            name => "key3",
+            num_subkeys => 5,
+            num_values => 0,
+            timestamp => undef,
+            timestamp_as_string => "(undefined)",
+        },
+        {
+            path => "key3\\",
+            name => "",
             num_subkeys => 0,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => 'key2\\key10',
-            name => 'key10',
+            path => "key3\\0",
+            name => "0",
             num_subkeys => 0,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => 'key2\\key11',
-            name => 'key11',
+            path => "key3\\\0",
+            name => "\0",
             num_subkeys => 0,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
         },
         {
-            path => '',
-            name => '',
-            num_subkeys => 1,
-            num_values => 0,
-            timestamp => undef,
-            timestamp_as_string => '(undefined)',
-        },
-        {
-            path => '\\0',
-            name => '0',
+            path => "key3\\\0name",
+            name => "\0name",
             num_subkeys => 0,
             num_values => 0,
             timestamp => undef,
-            timestamp_as_string => '(undefined)',
+            timestamp_as_string => "(undefined)",
+        },
+        {
+            path => "key3\\" . pack("U*", 0xe0..0xff),
+            name => pack("U*", 0xe0..0xff),
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => undef,
+            timestamp_as_string => "(undefined)",
         },
     );
     run_key_tests($root_key, @tests);
@@ -239,110 +273,175 @@ sub run_key_tests
 
     my @tests = (
         {
-            path => 'key1',
-            name => 'key1',
+            path => "key1",
+            name => "key1",
+            flags => 0x20,
             num_subkeys => 3,
             num_values => 0,
             timestamp => 993752854,
-            timestamp_as_string => '2001-06-28T18:27:34Z',
-            class_name => 'Class',
+            timestamp_as_string => "2001-06-28T18:27:34Z",
+            class_name => "key1",
         },
         {
-            path => 'key2',
-            name => 'key2',
-            num_subkeys => 6,
+            path => "key1\\key4",
+            name => "key4",
+            flags => 0x20,
+            num_subkeys => 0,
             num_values => 0,
             timestamp => 1021900351,
-            timestamp_as_string => '2002-05-20T13:12:31Z',
-            class_name => 'Class',
+            timestamp_as_string => "2002-05-20T13:12:31Z",
         },
         {
-            path => 'key1\\key3',
-            name => 'key3',
+            path => "key1\\key5",
+            name => "key5",
+            flags => 0x20,
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => 1022010303,
+            timestamp_as_string => "2002-05-21T19:45:03Z",
+        },
+        {
+            path => "key1\\key6",
+            name => "key6",
+            flags => 0x20,
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => 1022120254,
+            timestamp_as_string => "2002-05-23T02:17:34Z",
+        },
+        {
+            path => "key2",
+            name => "key2",
+            flags => 0x20,
+            num_subkeys => 6,
+            num_values => 0,
+            timestamp => 993862805,
+            timestamp_as_string => "2001-06-30T01:00:05Z",
+            class_name => "key2",
+        },
+        {
+            path => "key2\\key7",
+            name => "key7",
+            flags => 0x20,
             num_subkeys => 0,
             num_values => 0,
             timestamp => 1050047849,
-            timestamp_as_string => '2003-04-11T07:57:29Z',
+            timestamp_as_string => "2003-04-11T07:57:29Z",
         },
         {
-            path => 'key1\\key4',
-            name => 'key4',
+            path => "key2\\key8",
+            name => "key8",
+            flags => 0x20,
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => 1050157800,
+            timestamp_as_string => "2003-04-12T14:30:00Z",
+        },
+        {
+            path => "key2\\key9",
+            name => "key9",
+            flags => 0x20,
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => 1050267751,
+            timestamp_as_string => "2003-04-13T21:02:31Z",
+        },
+        {
+            path => "key2\\key10",
+            name => "key10",
+            flags => 0x20,
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => 1050377703,
+            timestamp_as_string => "2003-04-15T03:35:03Z",
+        },
+        {
+            path => "key2\\key11",
+            name => "key11",
+            flags => 0x20,
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => 1050487654,
+            timestamp_as_string => "2003-04-16T10:07:34Z",
+        },
+        {
+            path => "key2\\key12",
+            name => "key12",
+            flags => 0x20,
+            num_subkeys => 0,
+            num_values => 0,
+            timestamp => 1050597605,
+            timestamp_as_string => "2003-04-17T16:40:05Z",
+        },
+        {
+            path => "key3",
+            name => "key3",
+            flags => 0x20,
+            num_subkeys => 6,
+            num_values => 0,
+            timestamp => 993972756,
+            timestamp_as_string => "2001-07-01T07:32:36Z",
+            class_name => "key3",
+        },
+        {
+            path => "key3\\",
+            name => "",
+            flags => 0x20,
             num_subkeys => 0,
             num_values => 0,
             timestamp => 1078195347,
-            timestamp_as_string => '2004-03-02T02:42:27Z',
+            timestamp_as_string => "2004-03-02T02:42:27Z",
+            class_name => "",
         },
         {
-            path => 'key1\\key5',
-            name => 'key5',
+            path => "key3\\0",
+            name => "0",
+            flags => 0x20,
             num_subkeys => 0,
             num_values => 0,
-            timestamp => 1106342844,
-            timestamp_as_string => '2005-01-21T21:27:24Z',
+            timestamp => 1078305298,
+            timestamp_as_string => "2004-03-03T09:14:58Z",
+            class_name => "0",
         },
         {
-            path => 'key2\\key6',
-            name => 'key6',
+            path => "key3\\\0",
+            name => "\0",
+            flags => 0x20,
             num_subkeys => 0,
             num_values => 0,
-            timestamp => 1134490342,
-            timestamp_as_string => '2005-12-13T16:12:22Z',
+            timestamp => 1078415249,
+            timestamp_as_string => "2004-03-04T15:47:29Z",
+            class_name => "\0",
         },
         {
-            path => 'key2\\key7',
-            name => 'key7',
+            path => "key3\\\0name",
+            name => "\0name",
+            flags => 0x20,
             num_subkeys => 0,
             num_values => 0,
-            timestamp => 1162637840,
-            timestamp_as_string => '2006-11-04T10:57:20Z',
+            timestamp => 1078525200,
+            timestamp_as_string => "2004-03-05T22:20:00Z",
+            class_name => "\0name",
         },
         {
-            path => 'key2\\key8',
-            name => 'key8',
+            path => "key3\\" . pack("U*", 0xe0..0xff),
+            name => pack("U*", 0xe0..0xff),
+            flags => 0x20,
             num_subkeys => 0,
             num_values => 0,
-            timestamp => 1190785338,
-            timestamp_as_string => '2007-09-26T05:42:18Z',
+            timestamp => 1078635151,
+            timestamp_as_string => "2004-03-07T04:52:31Z",
+            class_name => pack("U*", 0xe0..0xff),
         },
         {
-            path => 'key2\\key9',
-            name => 'key9',
+            path => "key3\\" . pack("U*", 0x3b1..0x3c9),
+            name => pack("U*", 0x3b1..0x3c9),
+            flags => 0x0,
             num_subkeys => 0,
             num_values => 0,
-            timestamp => 1218932835,
-            timestamp_as_string => '2008-08-17T00:27:15Z',
-        },
-        {
-            path => 'key2\\key10',
-            name => 'key10',
-            num_subkeys => 0,
-            num_values => 0,
-            timestamp => 1247080333,
-            timestamp_as_string => '2009-07-08T19:12:13Z',
-        },
-        {
-            path => 'key2\\key11',
-            name => 'key11',
-            num_subkeys => 0,
-            num_values => 0,
-            timestamp => 1275227831,
-            timestamp_as_string => '2010-05-30T13:57:11Z',
-        },
-        {
-            path => '',
-            name => '',
-            num_subkeys => 1,
-            num_values => 0,
-            timestamp => 1303375328,
-            timestamp_as_string => '2011-04-21T08:42:08Z',
-        },
-        {
-            path => '\\0',
-            name => '0',
-            num_subkeys => 0,
-            num_values => 0,
-            timestamp => 1331522826,
-            timestamp_as_string => '2012-03-12T03:27:06Z',
+            timestamp => 1078745103,
+            timestamp_as_string => "2004-03-08T11:25:03Z",
+            class_name => pack("U*", 0x3b1..0x3c9),
         },
     );
     run_key_tests($root_key, @tests);

@@ -1,4 +1,4 @@
-use 5.006;
+use 5.008_001;
 use ExtUtils::MakeMaker;
 
 WriteMakefile(
@@ -15,20 +15,24 @@ WriteMakefile(
     ABSTRACT_FROM   => 'lib/Parse/Win32Registry.pm',
     AUTHOR          => 'James Macfarlane',
     EXE_FILES       => [
+        'bin/gtkregcompare.pl',
+        'bin/gtkregscope.pl',
+        'bin/gtkregview.pl',
         'bin/regclassnames.pl',
-        'bin/regcompare.pl',
         'bin/regdiff.pl',
         'bin/regdump.pl',
         'bin/regexport.pl',
         'bin/regfind.pl',
         'bin/regmultidiff.pl',
         'bin/regscan.pl',
-        'bin/regscope.pl',
         'bin/regsecurity.pl',
         'bin/regshell.pl',
         'bin/regstats.pl',
         'bin/regtimeline.pl',
         'bin/regtree.pl',
-        'bin/regview.pl'
+        'bin/wxregcompare.pl',
+        'bin/wxregscope.pl',
+        'bin/wxregview.pl',
     ],
+    ($ExtUtils::MakeMaker::VERSION > 6.30 ? (LICENSE => 'perl') : ()),
 );

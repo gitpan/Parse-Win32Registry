@@ -3,13 +3,11 @@ use warnings;
 
 use Test::More 'no_plan';
 use Data::Dumper;
-use Parse::Win32Registry 0.50 qw(:REG_);
+use Parse::Win32Registry 0.60 qw(:REG_);
 
 $Data::Dumper::Useqq = 1;
 $Data::Dumper::Terse = 1;
 $Data::Dumper::Indent = 0;
-
-Parse::Win32Registry::disable_warnings;
 
 sub find_file
 {
@@ -38,22 +36,22 @@ sub run_value_tests
 
         my $value = $key->get_value($name);
         ok(defined($value), "$desc value defined (valid value)");
-        is($value->get_name, $name, "$desc get_name eq " . Dumper($name));
-        is($value->get_type, $type, "$desc get_type == $type");
+        is($value->get_name, $name, "$desc get_name");
+        is($value->get_type, $type, "$desc get_type");
         is($value->get_type_as_string, $type_as_string,
-            "$desc get_type_as_string eq '$type_as_string'");
+            "$desc get_type_as_string");
         if (defined($data)) {
             if ($type == REG_DWORD) {
                 cmp_ok($value->get_data, '==', $data,
-                    "$desc get_data == $data");
+                    "$desc get_data");
                 cmp_ok($key->get_value_data($name), '==', $data,
-                    "$desc get_value_data == $data");
+                    "$desc get_value_data");
             }
             else {
                 is($value->get_data, $data,
-                    "$desc get_data eq " . Dumper($data));
+                    "$desc get_data");
                 is($key->get_value_data($name), $data,
-                    "$desc get_value_data eq " . Dumper($data));
+                    "$desc get_value_data");
             }
         }
         else {
@@ -64,7 +62,7 @@ sub run_value_tests
         }
         if (defined($raw_data)) {
             is($value->get_raw_data, $raw_data,
-                "$desc get_raw_data eq " . Dumper($raw_data))
+                "$desc get_raw_data")
                 or diag Dumper($value->get_raw_data);
         }
         else {
@@ -74,11 +72,11 @@ sub run_value_tests
         }
         if (defined($list_data)) {
             is_deeply([$value->get_data], $list_data,
-                "$desc (array) get_data eq " . Dumper($data))
+                "$desc (list) get_data")
                 or diag Dumper([$value->get_data]);
         }
         is($value->get_data_as_string, $data_as_string,
-            "$desc get_data_as_string eq " . Dumper($data_as_string));
+            "$desc get_data_as_string");
         my $name_or_default = $name eq '' ? '(Default)' : $name;
         my $value_as_string
             = "$name_or_default ($type_as_string) = $data_as_string";
@@ -110,19 +108,19 @@ sub run_value_tests
             name => 'sz1',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
-            data => 'www.perl.com',
-            data_as_string => 'www.perl.com',
-            as_regedit_export => qq{"sz1"="www.perl.com"\n},
-            raw_data => "www.perl.com",
+            data => 'www.perl.org',
+            data_as_string => 'www.perl.org',
+            as_regedit_export => qq{"sz1"="www.perl.org"\n},
+            raw_data => "www.perl.org",
         },
         {
             name => 'sz2',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
-            data => 'www.perl.com',
-            data_as_string => 'www.perl.com',
-            as_regedit_export => qq{"sz2"="www.perl.com"\n},
-            raw_data => "www.perl.com\0",
+            data => 'www.perl.org',
+            data_as_string => 'www.perl.org',
+            as_regedit_export => qq{"sz2"="www.perl.org"\n},
+            raw_data => "www.perl.org\0",
         },
         {
             name => 'sz3',
@@ -356,10 +354,10 @@ sub run_value_tests
             name => 'type500',
             type => 500,
             type_as_string => 'REG_500',
-            data => "\x01\x02\x03\x04",
-            data_as_string => '01 02 03 04',
-            as_regedit_export => qq{"type500"=hex(1f4):01,02,03,04\n},
-            raw_data => "\x01\x02\x03\x04",
+            data => "\x01\x02\x03\x04\x05\x06\x07\x08",
+            data_as_string => '01 02 03 04 05 06 07 08',
+            as_regedit_export => qq{"type500"=hex(1f4):01,02,03,04,05,06,07,08\n},
+            raw_data => "\x01\x02\x03\x04\x05\x06\x07\x08",
         },
         {
             name => '',
@@ -421,19 +419,19 @@ sub run_value_tests
             name => 'sz1',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
-            data => 'www.perl.com',
-            data_as_string => 'www.perl.com',
-            as_regedit_export => qq{"sz1"="www.perl.com"\n},
-            raw_data => "w\0w\0w\0.\0p\0e\0r\0l\0.\0c\0o\0m\0",
+            data => 'www.perl.org',
+            data_as_string => 'www.perl.org',
+            as_regedit_export => qq{"sz1"="www.perl.org"\n},
+            raw_data => "w\0w\0w\0.\0p\0e\0r\0l\0.\0o\0r\0g\0",
         },
         {
             name => 'sz2',
             type => REG_SZ,
             type_as_string => 'REG_SZ',
-            data => 'www.perl.com',
-            data_as_string => 'www.perl.com',
-            as_regedit_export => qq{"sz2"="www.perl.com"\n},
-            raw_data => "w\0w\0w\0.\0p\0e\0r\0l\0.\0c\0o\0m\0\0\0",
+            data => 'www.perl.org',
+            data_as_string => 'www.perl.org',
+            as_regedit_export => qq{"sz2"="www.perl.org"\n},
+            raw_data => "w\0w\0w\0.\0p\0e\0r\0l\0.\0o\0r\0g\0\0\0",
         },
         {
             name => 'sz3',
@@ -757,10 +755,10 @@ sub run_value_tests
             name => 'type500',
             type => 500,
             type_as_string => 'REG_500',
-            data => "\x01\x02\x03\x04",
-            data_as_string => '01 02 03 04',
-            as_regedit_export => qq{"type500"=hex(1f4):01,02,03,04\n},
-            raw_data => "\x01\x02\x03\x04",
+            data => "\x01\x02\x03\x04\x05\x06\x07\x08",
+            data_as_string => '01 02 03 04 05 06 07 08',
+            as_regedit_export => qq{"type500"=hex(1f4):01,02,03,04,05,06,07,08\n},
+            raw_data => "\x01\x02\x03\x04\x05\x06\x07\x08",
         },
         {
             name => '',

@@ -1,8 +1,8 @@
 --- #YAML:1.0
 name:                Parse-Win32Registry
-version:             0.51
+version:             0.60
 abstract:            Parse Windows Registry Files
-license:             ~
+license:             perl
 author:              
     - James Macfarlane
 generated_by:        ExtUtils::MakeMaker version 6.42

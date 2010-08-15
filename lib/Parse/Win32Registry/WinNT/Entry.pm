@@ -16,11 +16,10 @@ sub new {
     my $regfile = shift;
     my $offset = shift;
 
-    croak "Missing registry file" if !defined $regfile;
-    croak "Missing offset" if !defined $offset;
+    croak 'Missing registry file' if !defined $regfile;
+    croak 'Missing offset' if !defined $offset;
 
-    my $fh = $regfile->{_filehandle};
-    croak "Missing filehandle" if !defined $fh;
+    my $fh = $regfile->get_filehandle;
 
     sysseek($fh, $offset, 0);
     my $bytes_read = sysread($fh, my $entry_header, 8);
@@ -29,7 +28,7 @@ sub new {
     }
 
     my ($length,
-        $tag) = unpack("Va2", $entry_header);
+        $tag) = unpack('Va2', $entry_header);
 
     my $allocated = 0;
     if ($length > 0x7fffffff) {
@@ -37,35 +36,37 @@ sub new {
         $length = (0xffffffff - $length) + 1;
     }
 
-    $tag = "" if $tag !~ /(nk|vk|lh|lf|li|ri|sk)/;
+    $tag = '' if $tag !~ /(nk|vk|lh|lf|li|ri|sk)/;
 
-    if ($tag eq "nk") {
+    if ($tag eq 'nk') {
         if (my $key = Parse::Win32Registry::WinNT::Key->new($regfile,
-                                                            $offset)) {
+                                                            $offset))
+        {
             $key->regenerate_path;
             return $key;
         }
     }
-    elsif ($tag eq "vk") {
+    elsif ($tag eq 'vk') {
         if (my $value = Parse::Win32Registry::WinNT::Value->new($regfile,
-                                                                $offset)) {
+                                                                $offset))
+        {
             return $value;
         }
     }
-    elsif ($tag eq "sk") {
+    elsif ($tag eq 'sk') {
         if (my $value = Parse::Win32Registry::WinNT::Security->new($regfile,
-                                                                   $offset)) {
+                                                                   $offset))
+        {
             return $value;
         }
     }
 
-    my $self = {
-        _regfile => $regfile,
-        _offset => $offset,
-        _length => $length,
-        _tag => $tag,
-        _allocated => $allocated,
-    };
+    my $self = {};
+    $self->{_regfile} = $regfile,
+    $self->{_offset} = $offset,
+    $self->{_length} = $length,
+    $self->{_tag} = $tag,
+    $self->{_allocated} = $allocated,
     bless $self, $class;
 
     return $self;
@@ -75,29 +76,33 @@ sub as_string {
     my $self = shift;
 
     my $tag = $self->{_tag};
-    if ($tag eq "nk") {
-        return "(key entry)";
+    if ($tag eq 'nk') {
+        return '(key entry)';
     }
-    elsif ($tag eq "vk") {
-        return "(value entry)";
+    elsif ($tag eq 'vk') {
+        return '(value entry)';
     }
-    elsif ($tag eq "sk") {
-        return "(security entry)";
+    elsif ($tag eq 'sk') {
+        return '(security entry)';
     }
     elsif ($tag =~ /(lh|lf|li|ri)/) {
-        return "(subkey list entry)";
+        return '(subkey list entry)';
     }
-    return "(unidentified entry)";
+    return '(unidentified entry)';
 }
 
 sub parse_info {
     my $self = shift;
 
-    my $info = sprintf "0x%x,%d,%d %s",
+    my $tag = $self->{_tag};
+    $tag = defined($tag) && $tag ne ''
+         ? $tag . ' '
+         : '.. ';
+    my $info = sprintf '0x%x %slen=0x%x alloc=%d',
         $self->{_offset},
-        $self->{_allocated},
+        $tag,
         $self->{_length},
-        $self->{_tag};
+        $self->{_allocated};
     return $info;
 }
 

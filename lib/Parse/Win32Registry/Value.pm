@@ -55,10 +55,10 @@ sub get_data_as_string {
     my $type = $self->get_type;
     my $data = $self->get_data;
     if (!defined($data)) {
-        return "(invalid data)";
+        return '(invalid data)';
     }
     elsif (length($data) == 0) {
-        return "(no data)";
+        return '(no data)';
     }
     elsif ($type == REG_SZ || $type == REG_EXPAND_SZ) {
         return $data;
@@ -66,13 +66,13 @@ sub get_data_as_string {
     elsif ($type == REG_MULTI_SZ) {
         my @data = $self->get_data;
         my $i = 0;
-        return join(" ", map { "[" . $i++ . "] $_" } @data);
+        return join(' ', map { "[" . $i++ . "] $_" } @data);
     }
     elsif ($type == REG_DWORD) {
-        return sprintf "0x%08x (%u)", $data, $data;
+        return sprintf '0x%08x (%u)', $data, $data;
     }
     else {
-        return join(" ", map { sprintf("%02x", $_) } unpack("C*", $data));
+        return join(' ', unpack('(H2)*', $data));
     }
 }
 
@@ -86,7 +86,7 @@ sub as_string {
     my $self = shift;
 
     my $name = $self->get_name;
-    $name = "(Default)" if $name eq "";
+    $name = '(Default)' if $name eq '';
     my $type_as_string = $self->get_type_as_string;
     my $data_as_string = $self->get_data_as_string;
     return "$name ($type_as_string) = $data_as_string";

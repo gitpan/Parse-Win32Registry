@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-use Parse::Win32Registry 0.50 qw(
+use Parse::Win32Registry 0.60 qw(
     REG_NONE
     REG_SZ
     REG_EXPAND_SZ
@@ -35,6 +35,6 @@ use Parse::Win32Registry 0.50 qw(
 
     foreach my $test (@tests) {
         my ($name, $constant) = @{ $test };
-        cmp_ok(eval $name, '==', $constant, "$name == $constant");
+        cmp_ok(eval $name, '==', $constant, $name);
     }
 }

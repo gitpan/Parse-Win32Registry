@@ -10,16 +10,15 @@ use Encode;
 use File::Basename;
 use Parse::Win32Registry::Base qw(:all);
 use Parse::Win32Registry::WinNT::Key;
-use Parse::Win32Registry::WinNT::Hbin;
 
-use constant OFFSET_TO_FIRST_HBIN => 0x1000;
 use constant REGF_HEADER_LENGTH => 0x200;
+use constant OFFSET_TO_FIRST_HBIN => 0x1000;
 
 sub new {
     my $class = shift;
     my $filename = shift or croak "No filename specified";
 
-    open my $fh, "<", $filename or croak "Unable to open '$filename': $!";
+    open my $fh, '<', $filename or croak "Unable to open '$filename': $!";
 
     # 0x00 dword = 'regf' signature
     # 0x04 dword = seq1
@@ -34,11 +33,11 @@ sub new {
     # 0x2c dword = (1)
     # 0x30       = embedded filename
 
-    # Extracted offsets are always relative to first HBIN
+    # Extracted offsets are always relative to first hbin
 
     my $bytes_read = sysread($fh, my $regf_header, REGF_HEADER_LENGTH);
     if ($bytes_read != REGF_HEADER_LENGTH) {
-        warnf("Could not read registry file header");
+        warnf('Could not read registry file header');
         return;
     }
 
@@ -52,26 +51,26 @@ sub new {
         $offset_to_root_key,
         $total_hbin_length,
         $embedded_filename,
-        ) = unpack("a4VVa8VVVx4VVx4a64", $regf_header);
+        ) = unpack('a4VVa8VVVx4VVx4a64', $regf_header);
 
     $offset_to_root_key += OFFSET_TO_FIRST_HBIN;
 
-    if ($regf_sig ne "regf") {
-        warnf("Invalid registry file signature");
+    if ($regf_sig ne 'regf') {
+        warnf('Invalid registry file signature');
         return;
     }
 
-    $embedded_filename = unpack("Z*", decode("UCS-2LE", $embedded_filename));
+    $embedded_filename = unpack('Z*', decode('UCS-2LE', $embedded_filename));
 
     # The header checksum is the xor of the first 127 dwords.
     # The checksum is stored in the 128th dword, at offset 0x1fc (508).
     my $checksum = 0;
-    foreach my $x (unpack("V127", $regf_header)) {
+    foreach my $x (unpack('V127', $regf_header)) {
         $checksum ^= $x;
     }
-    my $embedded_checksum = unpack("x508V", $regf_header);
+    my $embedded_checksum = unpack('x508V', $regf_header);
     if ($checksum != $embedded_checksum) {
-        warnf("Invalid checksum for registry file header");
+        warnf('Invalid checksum for registry file header');
     }
 
     my $self = {};
@@ -160,7 +159,7 @@ sub get_embedded_filename {
     return $self->{_embedded_filename};
 }
 
-sub get_hbin_iterator {
+sub get_block_iterator {
     my $self = shift;
 
     my $offset_to_next_hbin = OFFSET_TO_FIRST_HBIN;
@@ -170,7 +169,9 @@ sub get_hbin_iterator {
         if ($offset_to_next_hbin > $end_of_file) {
             return; # no more hbins
         }
-        if (my $hbin = Parse::Win32Registry::WinNT::Hbin->new($self, $offset_to_next_hbin)) {
+        if (my $hbin = Parse::Win32Registry::WinNT::Hbin->new($self,
+                                               $offset_to_next_hbin))
+        {
             return unless $hbin->get_length > 0;
             $offset_to_next_hbin += $hbin->get_length;
             return $hbin;
@@ -181,29 +182,7 @@ sub get_hbin_iterator {
     });
 }
 
-sub get_entry_iterator {
-    my $self = shift;
-
-    my $entry_iter;
-    my $hbin_iter = $self->get_hbin_iterator;
-
-    return Parse::Win32Registry::Iterator->new(sub {
-        while (1) {
-            if (defined $entry_iter) {
-                my $entry = $entry_iter->();
-                if (defined $entry) {
-                    return $entry;
-                }
-            }
-            # entry iterator is undefined or finished so fetch a new one
-            my $hbin = $hbin_iter->();
-            if (!defined $hbin) {
-                return; # hbin iterator finished
-            }
-            $entry_iter = $hbin->get_entry_iterator;
-        }
-    });
-}
+*get_hbin_iterator = \&get_block_iterator;
 
 sub _dump_security_cache {
     my $self = shift;
@@ -211,9 +190,107 @@ sub _dump_security_cache {
     if (defined(my $cache = $self->{_security_cache})) {
         foreach my $offset (sort { $a <=> $b } keys %$cache) {
             my $security = $cache->{$offset};
-            printf "0x%x %s\n", $offset, $security->as_string;
+            printf '0x%x %s\n', $offset, $security->as_string;
         }
     }
+}
+
+
+package Parse::Win32Registry::WinNT::Hbin;
+
+use strict;
+use warnings;
+
+use base qw(Parse::Win32Registry::Entry);
+
+use Carp;
+use Parse::Win32Registry::Base qw(:all);
+use Parse::Win32Registry::WinNT::Entry;
+
+use constant HBIN_HEADER_LENGTH => 0x20;
+
+sub new {
+    my $class = shift;
+    my $regfile = shift;
+    my $offset = shift;
+
+    croak 'Missing registry file' if !defined $regfile;
+    croak 'Missing offset' if !defined $offset;
+
+    my $fh = $regfile->get_filehandle;
+
+    # 0x00 dword = 'hbin' signature
+    # 0x04 dword = offset from first hbin to this hbin
+    # 0x08 dword = length of this hbin / relative offset to next hbin
+    # 0x14 qword = timestamp (first hbin only)
+
+    # Extracted offsets are always relative to first hbin
+
+    sysseek($fh, $offset, 0);
+    my $bytes_read = sysread($fh, my $hbin_header, HBIN_HEADER_LENGTH);
+    if ($bytes_read != HBIN_HEADER_LENGTH) {
+        return;
+    }
+
+    my ($sig,
+        $offset_to_hbin,
+        $length,
+        $timestamp) = unpack('a4VVx8a8x4', $hbin_header);
+
+    if ($sig ne 'hbin') {
+        return;
+    }
+
+    my $self = {};
+    $self->{_regfile} = $regfile;
+    $self->{_offset} = $offset;
+    $self->{_length} = $length;
+    $self->{_header_length} = HBIN_HEADER_LENGTH;
+    $self->{_allocated} = 1;
+    $self->{_tag} = $sig;
+    $self->{_timestamp} = unpack_windows_time($timestamp);
+    bless $self, $class;
+
+    return $self;
+}
+
+sub get_timestamp {
+    my $self = shift;
+
+    return $self->{_timestamp};
+}
+
+sub get_timestamp_as_string {
+    my $self = shift;
+
+    return iso8601($self->{_timestamp});
+}
+
+sub get_entry_iterator {
+    my $self = shift;
+
+    my $regfile = $self->{_regfile};
+    my $offset = $self->{_offset};
+    my $length = $self->{_length};
+
+    my $offset_to_next_entry = $offset + HBIN_HEADER_LENGTH;
+    my $end_of_hbin = $offset + $length;
+
+    return Parse::Win32Registry::Iterator->new(sub {
+        if ($offset_to_next_entry >= $end_of_hbin) {
+            return; # no more entries
+        }
+        if (my $entry = Parse::Win32Registry::WinNT::Entry->new($regfile,
+                                                   $offset_to_next_entry))
+        {
+            return unless $entry->get_length > 0;
+            $offset_to_next_entry += $entry->get_length;
+            return $entry;
+        }
+        else {
+            return; # no more entries
+        }
+    });
 }
 
 1;

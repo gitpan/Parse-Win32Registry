@@ -35,9 +35,9 @@ my $entry_iter = $registry->get_entry_iterator;
 while (defined(my $entry = $entry_iter->get_next)) {
     next if $list_allocated && !$entry->is_allocated;
     next if !((!$list_keys && !$list_values && !$list_security) ||
-              ($list_keys && $entry->looks_like_key) ||
-              ($list_values && $entry->looks_like_value) ||
-              ($list_security && $entry->looks_like_security));
+              ($list_keys && $entry->can('get_subkey')) ||
+              ($list_values && $entry->can('get_data')) ||
+              ($list_security && $entry->can('get_security_descriptor')));
 
     if ($show_parse_info) {
         print $entry->parse_info, "\n";

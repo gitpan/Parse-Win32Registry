@@ -11,7 +11,7 @@ sub get_name {
     my $self = shift;
 
     # the root key of a windows 95 registry has no defined name
-    # but this should be set to "" when created
+    # but this should be set to '' when created
     return $self->{_name};
 }
 
@@ -25,7 +25,7 @@ sub _look_up_subkey {
     my $self = shift;
     my $subkey_name = shift;
 
-    croak "Missing subkey name" if !defined $subkey_name;
+    croak 'Missing subkey name' if !defined $subkey_name;
 
     foreach my $subkey ($self->get_list_of_subkeys) {
         if (uc $subkey_name eq uc $subkey->{_name}) {
@@ -54,9 +54,16 @@ sub get_subkey {
                         ? ($subkey_path)
                         : split(/\\/, $subkey_path, -1);
 
+    my %offsets_seen = ();
+    $offsets_seen{$key->get_offset} = undef;
+
     foreach my $subkey_name (@path_components) {
         if (my $subkey = $key->_look_up_subkey($subkey_name)) {
+            if (exists $offsets_seen{$subkey->get_offset}) {
+                return; # found loop
+            }
             $key = $subkey;
+            $offsets_seen{$key->get_offset} = undef;
         }
         else { # subkey name not found, abort look up
             return;
@@ -98,16 +105,23 @@ sub regenerate_path {
     # ascend to the root
     my $key = $self;
     my @key_names = ($key->get_name);
+
+    my %offsets_seen = ();
     while (!$key->is_root) {
+        $offsets_seen{$key->get_offset}++;
         $key = $key->get_parent;
         if (!defined $key) { # found an undefined parent key
-            unshift @key_names, "(Invalid Parent Key)";
+            unshift @key_names, '(Invalid Parent Key)';
+            last;
+        }
+        if (exists $offsets_seen{$key->get_offset}) { # found loop
+            unshift @key_names, '(Invalid Parent Key)';
             last;
         }
         unshift @key_names, $key->get_name;
     }
 
-    my $key_path = join("\\", @key_names);
+    my $key_path = join('\\', @key_names);
     $self->{_key_path} = $key_path;
     return $key_path;
 }
@@ -137,7 +151,7 @@ sub get_mru_list_of_values {
         }
     }
     elsif (my $mrulistex = $self->get_value('MRUListEx')) {
-        foreach my $item (unpack("V*", $mrulistex->get_data)) {
+        foreach my $item (unpack('V*', $mrulistex->get_data)) {
             last if $item == 0xffffffff;
             if (my $value = $self->get_value($item)) {
                 push @values, $value;
@@ -177,7 +191,7 @@ sub get_subtree_iterator {
         return shift @start_keys;
     });
     my $value_iter;
-    my $key;
+    my $key; # used to remember key while iterating values
 
     return Parse::Win32Registry::Iterator->new(sub {
         if (defined $value_iter && wantarray) {
@@ -185,8 +199,8 @@ sub get_subtree_iterator {
             if (defined $value) {
                 return ($key, $value);
             }
-            # $value_iter should now be made undef
-            # or at least reset by the following code
+            # $value_iter finished, so fetch a new one
+            # from the (current) $subkey_iter[-1]
         }
         while (@subkey_iters > 0) {
             $key = $subkey_iters[-1]->(); # depth-first
@@ -195,7 +209,7 @@ sub get_subtree_iterator {
                 $value_iter = $key->get_value_iterator;
                 return $key;
             }
-            pop @subkey_iters; # iter finished, so remove it
+            pop @subkey_iters; # $subkey_iter finished, so remove it
         }
         return;
     });
@@ -203,27 +217,29 @@ sub get_subtree_iterator {
 
 sub walk {
     my $self = shift;
-    my $prewalk_func = shift;
+    my $key_enter_func = shift;
     my $value_func = shift;
-    my $postwalk_func = shift;
+    my $key_leave_func = shift;
 
-    if (!defined $prewalk_func && !defined $postwalk_func) {
-        $prewalk_func = sub { print "+ ", $_[0]->get_path, "\n"; };
+    if (!defined $key_enter_func &&
+        !defined $value_func &&
+        !defined $key_leave_func) {
+        $key_enter_func = sub { print "+ ", $_[0]->get_path, "\n"; };
         $value_func = sub { print "  '", $_[0]->get_name, "'\n"; };
-        $postwalk_func = sub { print "- ", $_[0]->get_path, "\n"; };
+        $key_leave_func = sub { print "- ", $_[0]->get_path, "\n"; };
     }
 
-    $prewalk_func->($self) if ref $prewalk_func eq 'CODE';
+    $key_enter_func->($self) if ref $key_enter_func eq 'CODE';
 
     foreach my $value ($self->get_list_of_values) {
         $value_func->($value) if ref $value_func eq 'CODE';
     }
 
     foreach my $subkey ($self->get_list_of_subkeys) {
-        $subkey->walk($prewalk_func, $value_func, $postwalk_func);
+        $subkey->walk($key_enter_func, $value_func, $key_leave_func);
     }
 
-    $postwalk_func->($self) if ref $postwalk_func eq 'CODE';
+    $key_leave_func->($self) if ref $key_leave_func eq 'CODE';
 }
 
 1;

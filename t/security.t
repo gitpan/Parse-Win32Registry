@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-use Parse::Win32Registry 0.50 qw(
+use Parse::Win32Registry 0.60 qw(
     unpack_sid
     unpack_ace
     unpack_acl
@@ -73,13 +73,13 @@ foreach my $sid_test (@sid_tests) {
     my $unpacked_sid1 = unpack_sid($data);
     my ($unpacked_sid2, $len2) = unpack_sid($data);
     if (defined($sid)) {
-        check_sid($unpacked_sid1, $sid, "$desc unpack_sid");
+        check_sid($unpacked_sid1, $sid, "$desc (scalar) unpack_sid");
         check_sid($unpacked_sid2, $sid, "$desc (list) unpack_sid");
-        is($len2, $len, "$desc (list) unpack_sid len == $len");
+        is($len2, $len, "$desc (list) unpack_sid length");
     }
     else {
         ok(!defined($unpacked_sid1),
-            "$desc unpack_sid undefined (invalid sid)");
+            "$desc (scalar) unpack_sid undefined (invalid sid)");
         ok(!defined($unpacked_sid2),
             "$desc (list) unpack_sid undefined (invalid sid)");
     }
@@ -197,13 +197,13 @@ foreach my $ace_test (@ace_tests) {
     my $unpacked_ace1 = unpack_ace($data);
     my ($unpacked_ace2, $len2) = unpack_ace($data);
     if (defined($ace)) {
-        check_ace($unpacked_ace1, $ace, "$desc unpack_ace");
+        check_ace($unpacked_ace1, $ace, "$desc (scalar) unpack_ace");
         check_ace($unpacked_ace2, $ace, "$desc (list) unpack_ace");
-        is($len2, $len, "$desc (list) unpack_ace len == $len");
+        is($len2, $len, "$desc (list) unpack_ace length");
     }
     else {
         ok(!defined($unpacked_ace1),
-            "$desc unpack_ace undefined (invalid ace)");
+            "$desc (scalar) unpack_ace undefined (invalid ace)");
         ok(!defined($unpacked_ace2),
             "$desc (list) unpack_ace undefined (invalid ace)");
     }
@@ -397,13 +397,13 @@ foreach my $acl_test (@acl_tests) {
     my $unpacked_acl1 = unpack_acl($data);
     my ($unpacked_acl2, $len2) = unpack_acl($data);
     if (defined($acl)) {
-        check_acl($unpacked_acl1, $acl, "$desc unpack_acl");
+        check_acl($unpacked_acl1, $acl, "$desc (scalar) unpack_acl");
         check_acl($unpacked_acl2, $acl, "$desc (list) unpack_acl");
-        is($len2, $len, "$desc (list) unpack_acl len == $len");
+        is($len2, $len, "$desc (list) unpack_acl length");
     }
     else {
         ok(!defined($unpacked_acl1),
-            "$desc unpack_acl undefined (invalid acl)");
+            "$desc (scalar) unpack_acl undefined (invalid acl)");
         ok(!defined($unpacked_acl2),
             "$desc (list) unpack_acl undefined (invalid acl)");
     }
@@ -944,13 +944,15 @@ foreach my $sd_test (@sd_tests) {
     my $unpacked_sd1 = unpack_security_descriptor($data);
     my ($unpacked_sd2, $len2) = unpack_security_descriptor($data);
     if (defined($sd)) {
-        check_sd($unpacked_sd1, $sd, "$desc unpack_security_descriptor");
-        check_sd($unpacked_sd2, $sd, "$desc (list) unpack_security_descriptor");
-        is($len2, $len, "$desc (list) unpack_security_descriptor len == $len");
+        check_sd($unpacked_sd1, $sd,
+            "$desc (scalar) unpack_security_descriptor");
+        check_sd($unpacked_sd2, $sd,
+            "$desc (list) unpack_security_descriptor");
+        is($len2, $len, "$desc (list) unpack_security_descriptor length");
     }
     else {
         ok(!defined($unpacked_sd1),
-            "$desc unpack_security_descriptor undefined (invalid sd)");
+            "$desc (scalar) unpack_security_descriptor undefined (invalid sd)");
         ok(!defined($unpacked_sd2),
             "$desc (list) unpack_security_descriptor undefined (invalid sd)");
     }
@@ -1215,5 +1217,5 @@ foreach my $sd_test (@sd_tests) {
             "$desc get_security_descriptor");
 
         $security = $security->get_next;
-    } 
+    }
 }

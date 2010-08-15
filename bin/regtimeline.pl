@@ -58,7 +58,7 @@ if ($period) {
     $first_timestamp = $last_timestamp - $period * 86400;
 }
 
-foreach my $timestamp (sort keys %keys_by_timestamp) {
+foreach my $timestamp (sort { $a <=> $b } keys %keys_by_timestamp) {
     next if $timestamp < $first_timestamp;
     foreach my $key (@{$keys_by_timestamp{$timestamp}}) {
         print iso8601($timestamp), "\t", $key->get_path, "\n";

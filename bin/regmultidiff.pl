@@ -15,6 +15,7 @@ Getopt::Long::Configure('bundling');
 
 GetOptions('values|v'  => \my $show_values,
            'hexdump|x' => \my $show_hexdump,
+           'long|l'    => \my $show_long,
            'all|a'     => \my $show_all);
 
 my $show_keys = 1;
@@ -56,20 +57,20 @@ if ($initial_key_path) {
 }
 
 my $num_start_keys = grep { defined } @start_keys;
-if ($num_start_keys < 2) {
-    die "Could not locate the key '$initial_key_path'\nin at least two of the specified files\n";
+if ($num_start_keys < 1) {
+    die "Could not locate the key '$initial_key_path' in any file\n";
 }
 
 my $subtree_iter = make_multiple_subtree_iterator(@start_keys);
 my $batch_size = @start_keys;
 
-for (my $num = 0; $num < $batch_size; $num++) {
-    print "[$num]:\tFILE\t'$filenames[$num]'\n";
+if ($show_long) {
+    for (my $num = 0; $num < $batch_size; $num++) {
+        print "[$num]:\tFILE\t'$filenames[$num]'\n";
+    }
 }
 
-my $key_shown;
-#my $keys_ref = \@start_keys;
-#my $values_ref;
+my $last_key_shown;
 
 while (my ($keys_ref, $values_ref) = $subtree_iter->get_next) {
     my @keys = @$keys_ref;
@@ -84,30 +85,44 @@ while (my ($keys_ref, $values_ref) = $subtree_iter->get_next) {
         my @changes = compare_multiple_values(@values);
         my $num_changes = grep { $_ } @changes;
         if ($num_changes > 0 && $show_values) {
-            if (!defined $key_shown || $key_shown ne $any_key->get_path) {
-                print "[*]:\t\t", $any_key->as_string, ":\n";
-                $key_shown = $any_key->get_path;
+            if (!defined $last_key_shown
+                      || $last_key_shown ne $any_key->get_path)
+            {
+                print "-" x $batch_size, "\t", $any_key->get_path, "\n";
+                $last_key_shown = $any_key->get_path;
             }
-            for (my $num = 0; $num < $batch_size; $num++) {
-                my $next_change = $changes[$num + 1];
-                if ($changes[$num] || $show_all
-                                   || defined $next_change
-                                           && $next_change eq 'DELETED') {
-                    print "[$num]:\t$changes[$num]\t";
-                    if (defined $values[$num]) {
-                        if (!$show_hexdump) {
-                            print $values[$num]->as_string, "\n";
+            if (!$show_long) {
+                for (my $num = 0; $num < $batch_size; $num++) {
+                    my $diff = substr($changes[$num], 0, 1) ||
+                                (defined $values[$num] ? '.' : ' ');
+                    print $diff;
+                }
+                print "\t", $any_value->get_name, "\n";
+            }
+            else {
+                for (my $num = 0; $num < $batch_size; $num++) {
+                    my $next_change = $changes[$num + 1];
+                    if ($changes[$num] || $show_all
+                                       || defined $next_change
+                                               && $next_change eq 'DELETED')
+                    {
+                        print "[$num]:\t$changes[$num]\t";
+                        if (defined $values[$num]) {
+                            if (!$show_hexdump) {
+                                print $values[$num]->as_string, "\n";
+                            }
+                            else {
+                                my $value_name = $values[$num]->get_name;
+                                $value_name = "(Default)" if $value_name eq "";
+                                my $value_type
+                                    = $values[$num]->get_type_as_string;
+                                print "$value_name ($value_type):\n";
+                                print hexdump($values[$num]->get_raw_data);
+                            }
                         }
                         else {
-                            my $value_name = $values[$num]->get_name;
-                            $value_name = "(Default)" if $value_name eq "";
-                            my $value_type = $values[$num]->get_type_as_string;
-                            print "$value_name ($value_type):\n";
-                            print hexdump($values[$num]->get_raw_data);
+                            print "\n";
                         }
-                    }
-                    else {
-                        print "\n";
                     }
                 }
             }
@@ -117,23 +132,35 @@ while (my ($keys_ref, $values_ref) = $subtree_iter->get_next) {
         my @changes = compare_multiple_keys(@keys);
         my $num_changes = grep { $_ } @changes;
         if ($num_changes > 0 && $show_keys) {
-            for (my $num = 0; $num < $batch_size; $num++) {
-                my $next_change = $changes[$num+1];
-                if ($changes[$num] || $show_all
-                                   || defined $next_change
-                                           && $next_change eq 'DELETED') {
-                    print "[$num]:\t$changes[$num]\t";
-                    if (defined $keys[$num]) {
-                        print $keys[$num]->as_string;
-                        $key_shown = $keys[$num]->get_path;
+            if (!$show_long) {
+                for (my $num = 0; $num < $batch_size; $num++) {
+                    my $diff = substr($changes[$num], 0, 1) ||
+                                (defined $keys[$num] ? '.' : ' ');
+                    print $diff;
+                }
+                print "\t", $any_key->get_path, "\n";
+            }
+            else {
+                for (my $num = 0; $num < $batch_size; $num++) {
+                    my $next_change = $changes[$num+1];
+                    if ($changes[$num] || $show_all
+                                       || defined $next_change
+                                               && $next_change eq 'DELETED')
+                    {
+                        print "[$num]:\t$changes[$num]\t";
+                        if (defined $keys[$num]) {
+                            print $keys[$num]->as_string;
+                            $last_key_shown = $keys[$num]->get_path;
+                        }
+                        elsif ($changes[$num] eq 'DELETED') {
+                            print $keys[$num-1]->as_string;
+                            $last_key_shown = $keys[$num-1]->get_path;
+                        }
+                        print "\n";
                     }
-                    elsif ($changes[$num] eq 'DELETED') {
-                        print $keys[$num-1]->as_string;
-                        $key_shown = $keys[$num-1]->get_path;
-                    }
-                    print "\n";
                 }
             }
+            $last_key_shown = $any_key->get_path;
         }
     }
 }
@@ -144,11 +171,14 @@ sub usage {
 $script_name for Parse::Win32Registry $Parse::Win32Registry::VERSION
 
 Compares two or more registry files.
+Defaults to displaying a summary of the changes where each letter
+represents a change (N=NEWER, O=OLDER, A=ADDED, D=DELETED, C=CHANGED).
+The long output will display full details of each change.
 
-$script_name <file1> <file2> <file3> ... [<subkey>] [-v] [-x] [-a]
+$script_name <file1> <file2> <file3> ... [<subkey>] [-v] [-x] [-l] [-a]
     -v or --values      display values
     -x or --hexdump     display value data as a hex dump
-    -a or --all         show all keys and values preceding and following
-                        any changes
+    -l or --long        show each changed key or value instead of a summary
+    -a or --all         show all keys and values before and after a change
 USAGE
 }

@@ -1,5 +1,42 @@
 Revision history for Perl extension Parse::Win32Registry.
 
+** 0.60 2010-08-15
+
+Parse::Win32Registry now requires Perl 5.8.1.
+
+Implemented new RGKN and RGDB Block objects for Windows 95 registry
+files. Now both Windows 95 and Windows NT registry files have
+a get_block_iterator method, which replaces the get_hbin_iterator
+previously provided for Windows NT registry files. (For backwards
+compatibility, calling the get_hbin_iterator method will call the
+get_block_iterator method.)
+
+Some performance improvements have been made to the processing of
+REG_MULTI_SZ value data (in the get_data method of Value objects), to
+the generation of hexdumps (in the hexdump function and the unparsed
+method of Entry objects), and to the generation of REGEDIT-style octet
+strings (in the as_regedit_export method of Value objects).
+
+Uncompressed (Unicode) key and value names are now correctly read
+from Windows NT registry files.
+
+The following new scripts have been added: wxregcompare.pl,
+wxregscope.pl, and wxregview.pl. The existing regcompare.pl,
+regscope.pl, and regview.pl scripts have been renamed to
+gtkregcompare.pl, gtkregscope.pl, and gtkregview.pl respectively.
+The wx scripts require Mattia Barbon's wxPerl library and the gtk
+scripts require Gtk-Perl. (Binary versions of wxPerl are currently
+available in ActivePerl.)
+
+gtkregscope.pl and wxregscope.pl use the new get_block_iterator
+method, so can read both Windows 95 or Windows NT registry files.
+
+gtkregcompare.pl and wxregcompare.pl allow the Select Files dialog
+to be cancelled to make it possible to review the currently selected files.
+
+regmultidiff.pl now displays changes in a summary mode.
+The previous format is available by specifying the -l or --long option.
+
 ** 0.51 2009-10-04
 
 Added new regscope.pl script, a GTK+ registry entry viewer that uses color
@@ -8,8 +45,7 @@ to highlight different types of registry entries.
 Documented the get_name method of SID objects and the get_value_data
 method of Key objects. The as_string method of the ACE object and the
 as_stanza method of the SecurityDescriptor object now include the well
-known SID names (as returned each SID object's get_name method) for
-each SID object.
+known SID names (as returned by each SID object's get_name method).
 
 Updated the regview.pl and regcompare.pl scripts: regview.pl and
 regcompare.pl can now select keys and/or values when searching,
@@ -17,7 +53,7 @@ regview.pl can now sort columns (e.g. keys can be sorted by timestamp,
 values by type, etc), regcompare.pl can now bookmark keys or values,
 and regview.pl now has a basic report view.
 
-Fixed the get_subtree_iter and make_multiple_subkey_iterator methods
+Fixed the get_subtree_iter and make_multiple_subtree_iterator methods
 to return the root key(s) of the subtree(s) as the documentation
 indicates. regview.pl, regmultidiff.pl, and regcompare.pl amended to
 accommodate these changes.
@@ -72,7 +108,7 @@ through all the hbins in a registry file and through each entry of
 each hbin.
 
 The as_hexdump method provided by Entry, Key, and Value objects
-has been renamed to unparsed to more accurately reflect what it is.
+has been renamed to unparsed to more accurately reflect what it shows.
 
 The Entry, Key, and Value objects now provide the following methods:
 get_length, get_tag, is_allocated, get_raw_bytes, looks_like_key,

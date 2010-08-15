@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-use Parse::Win32Registry 0.50;
+use Parse::Win32Registry 0.60;
 
 sub find_file
 {
@@ -21,14 +21,18 @@ sub find_file
 
     my $desc = "95";
 
+    ok(fileno($registry->get_filehandle),
+        "$desc get_filehandle");
     is($registry->get_filename, $filename,
-        "$desc get_filename eq '$filename'");
+        "$desc get_filename");
+    cmp_ok($registry->get_length, '==', -s $filename,
+        "$desc get_length");
     ok(!defined($registry->get_timestamp),
-        "$desc get_timestamp undefined");
+        "$desc get_timestamp undefined (no timestamp)");
     is($registry->get_timestamp_as_string, $timestamp_as_string,
-        "$desc get_timestamp_as_string eq '$timestamp_as_string'");
+        "$desc get_timestamp_as_string");
     ok(!defined($registry->get_embedded_filename),
-        "$desc get_embedded_filename undefined");
+        "$desc get_embedded_filename undefined (no embedded filename)");
 }
 
 {
@@ -44,12 +48,16 @@ sub find_file
 
     my $desc = "NT";
 
+    ok(fileno($registry->get_filehandle),
+        "$desc get_filehandle");
     is($registry->get_filename, $filename,
-        "$desc get_filename eq '$filename'");
+        "$desc get_filename");
+    cmp_ok($registry->get_length, '==', -s $filename,
+        "$desc get_length");
     cmp_ok($registry->get_timestamp, '==', $timestamp,
-        "$desc get_timestamp == $timestamp");
+        "$desc get_timestamp");
     is($registry->get_timestamp_as_string, $timestamp_as_string,
-        "$desc get_timestamp_as_string eq '$timestamp_as_string'");
+        "$desc get_timestamp_as_string");
     is($registry->get_embedded_filename, $embedded_filename,
-        "$desc get_embedded_filename eq '$embedded_filename'");
+        "$desc get_embedded_filename");
 }

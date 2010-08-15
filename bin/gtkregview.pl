@@ -5,11 +5,8 @@ use warnings;
 use Glib ':constants';
 use Gtk2 -init;
 
-my $screen = Gtk2::Gdk::Screen->get_default;
-my $window_width = $screen->get_width * 0.9;
-my $window_height = $screen->get_height * 0.8;
-$window_width = 1100 if $window_width > 1100;
-$window_height = 900 if $window_height > 900;
+my $window_width = 600;
+my $window_height = 400;
 
 use File::Basename;
 use File::Spec;
@@ -155,7 +152,7 @@ my $menubar = Gtk2::MenuBar->new;
 my $accel_group = Gtk2::AccelGroup->new;
 
 # File Menu
-my $open_menuitem = Gtk2::MenuItem->new('_Open');
+my $open_menuitem = Gtk2::MenuItem->new('_Open...');
 $open_menuitem->signal_connect('activate' => \&open_file);
 $open_menuitem->add_accelerator('activate', $accel_group,
     $Gtk2::Gdk::Keysyms{O}, ['control-mask'], ['visible', 'locked']);
@@ -175,10 +172,8 @@ $file_menu->append(Gtk2::SeparatorMenuItem->new);
 $file_menu->append($quit_menuitem);
 $file_menu->set_accel_group($accel_group);
 
-my $recent_separator; # placeholder, becomes separator for recent files
-
 # Edit Menu
-my $copy_menuitem = Gtk2::MenuItem->new('_Copy key path');
+my $copy_menuitem = Gtk2::MenuItem->new('_Copy Key Path');
 $copy_menuitem->signal_connect('activate' => \&copy_key_path);
 $copy_menuitem->add_accelerator('activate', $accel_group,
     $Gtk2::Gdk::Keysyms{C}, ['control-mask'], ['visible', 'locked']);
@@ -187,11 +182,11 @@ my $edit_menu = Gtk2::Menu->new;
 $edit_menu->append($copy_menuitem);
 
 # Search Menu
-my $find_menuitem = Gtk2::MenuItem->new('_Find');
+my $find_menuitem = Gtk2::MenuItem->new('_Find...');
 $find_menuitem->signal_connect('activate' => \&find);
 $find_menuitem->add_accelerator('activate', $accel_group,
     $Gtk2::Gdk::Keysyms{F}, ['control-mask'], ['visible', 'locked']);
-my $find_next_menuitem = Gtk2::MenuItem->new('Find Next');
+my $find_next_menuitem = Gtk2::MenuItem->new('Find _Next');
 $find_next_menuitem->signal_connect('activate' => \&find_next);
 $find_next_menuitem->add_accelerator('activate', $accel_group,
     $Gtk2::Gdk::Keysyms{G}, ['control-mask'], ['visible', 'locked']);
@@ -207,7 +202,7 @@ my $add_bookmark_menuitem = Gtk2::MenuItem->new('_Add Bookmark');
 $add_bookmark_menuitem->signal_connect('activate' => \&add_bookmark);
 $add_bookmark_menuitem->add_accelerator('activate', $accel_group,
     $Gtk2::Gdk::Keysyms{D}, ['control-mask'], ['visible', 'locked']);
-my $edit_bookmarks_menuitem = Gtk2::MenuItem->new('_Edit Bookmarks');
+my $edit_bookmarks_menuitem = Gtk2::MenuItem->new('_Edit Bookmarks...');
 $edit_bookmarks_menuitem->signal_connect('activate' => \&edit_bookmarks);
 $edit_bookmarks_menuitem->add_accelerator('activate', $accel_group,
     $Gtk2::Gdk::Keysyms{B}, ['control-mask'], ['visible', 'locked']);
@@ -215,25 +210,23 @@ $edit_bookmarks_menuitem->add_accelerator('activate', $accel_group,
 my $bookmarks_menu = Gtk2::Menu->new;
 $bookmarks_menu->append($add_bookmark_menuitem);
 $bookmarks_menu->append($edit_bookmarks_menuitem);
-$bookmarks_menu->append(Gtk2::SeparatorMenuItem->new);
+
+my $bookmarks_separator; # placeholder, becomes separator for bookmarks
 
 # Reports Menu
-my $view_report_menuitem = Gtk2::MenuItem->new('View Bookmark Report');
-$view_report_menuitem->signal_connect('activate' => \&view_report);
-$view_report_menuitem->add_accelerator('activate', $accel_group,
+my $show_report_menuitem = Gtk2::MenuItem->new('Show _Bookmark Report...');
+$show_report_menuitem->signal_connect('activate' => \&view_report);
+$show_report_menuitem->add_accelerator('activate', $accel_group,
     $Gtk2::Gdk::Keysyms{R}, ['control-mask'], ['visible', 'locked']);
 #my $dump_loaded_keys_menuitem = Gtk2::MenuItem->new('Dump loaded keys');
 #$dump_loaded_keys_menuitem->signal_connect('activate' => \&dump_loaded_keys);
-#my $dump_settings_menuitem = Gtk2::MenuItem->new('Dump settings');
-#$dump_settings_menuitem->signal_connect('activate' => \&dump_settings);
 
-my $reports_menu = Gtk2::Menu->new;
-$reports_menu->append($view_report_menuitem);
-#$reports_menu->append($dump_loaded_keys_menuitem);
-#$reports_menu->append($dump_settings_menuitem);
+my $view_menu = Gtk2::Menu->new;
+$view_menu->append($show_report_menuitem);
+#$view_menu->append($dump_loaded_keys_menuitem);
 
 # Help Menu
-my $about_menuitem = Gtk2::MenuItem->new('_About');
+my $about_menuitem = Gtk2::MenuItem->new('_About...');
 $about_menuitem->signal_connect('activate' => \&about);
 
 my $help_menu = Gtk2::Menu->new;
@@ -256,9 +249,9 @@ my $bookmarks_menuitem = Gtk2::MenuItem->new('_Bookmarks');
 $bookmarks_menuitem->set_submenu($bookmarks_menu);
 $menubar->append($bookmarks_menuitem);
 
-my $reports_menuitem = Gtk2::MenuItem->new('_Reports');
-$reports_menuitem->set_submenu($reports_menu);
-$menubar->append($reports_menuitem);
+my $view_menuitem = Gtk2::MenuItem->new('_View');
+$view_menuitem->set_submenu($view_menu);
+$menubar->append($view_menuitem);
 
 my $help_menuitem = Gtk2::MenuItem->new('_Help');
 $help_menuitem->set_submenu($help_menu);
@@ -281,7 +274,6 @@ my $window = Gtk2::Window->new;
 $window->set_default_size($window_width, $window_height);
 $window->set_position('center');
 $window->signal_connect(destroy => sub { Gtk2->main_quit });
-$window->signal_connect(delete_event => sub { save_settings(); return FALSE; });
 $window->add($main_vbox);
 $window->add_accel_group($accel_group);
 $window->set_title($script_name);
@@ -307,7 +299,7 @@ sub build_bookmarks_dialog {
 
     my $bookmark_location_cell = Gtk2::CellRendererText->new;
     my $bookmark_column1 = Gtk2::TreeViewColumn->new_with_attributes(
-        'Location', $bookmark_location_cell, 'text', 1);
+        'Path From Root', $bookmark_location_cell, 'text', 1);
     $bookmark_location_cell->set('ellipsize', 'end');
     $bookmark_column1->set_resizable(FALSE);
     $bookmark_view->append_column($bookmark_column1);
@@ -379,7 +371,7 @@ sub build_report_dialog {
 
     my $dialog = Gtk2::Dialog->new('Report', $window, 'modal',
         'gtk-save' => 50,
-        'gtk-ok' => 'ok',
+        'gtk-cancel' => 'cancel',
     );
     $dialog->resize($window_width * 0.8, $window_height * 0.8);
     $dialog->vbox->add($scrolled_report_view);
@@ -408,14 +400,9 @@ my $report_dialog = build_report_dialog;
 
 my $search_keys = TRUE;
 my $search_values = TRUE;
+my $search_selected = 0;
 my $find_param = '';
 my $find_iter;
-
-my @recent = ();
-
-my $settings_file;
-#$settings_file = "$ENV{HOME}/.$script_name";
-load_settings();
 
 my $last_dir;
 
@@ -443,8 +430,10 @@ sub key_selected {
     foreach my $value (@values) {
         my $name = $value->get_name;
         $name = '(Default)' if $name eq '';
+        $name =~ s/\0/[NUL]/g;
         my $type = $value->get_type_as_string;
         my $data = $value->get_data_as_string;
+        $data =~ s/\0/[NUL]/g;
         # Abbreviate very long data to avoid a performance hit
         # from loading large strings into the model
         $data = substr($data, 0, 500);
@@ -466,10 +455,13 @@ sub key_selected {
         my $sd = $security->get_security_descriptor;
         $str .= $sd->as_stanza;
     }
+
     my $text_buffer = $text_view->get_buffer;
     $text_buffer->set_text($str);
     $statusbar->pop(0);
-    $statusbar->push(0, $key->get_path);
+    my $key_path = $key->get_path;
+    $key_path =~ s/\0/[NUL]/g;
+    $statusbar->push(0, $key_path);
 }
 
 sub value_selected {
@@ -489,6 +481,7 @@ sub value_selected {
 
     # Display value information:
     my $str = hexdump($value->get_raw_data);
+
     my $text_buffer = $text_view->get_buffer;
     $text_buffer->set_text($str);
 }
@@ -496,10 +489,19 @@ sub value_selected {
 sub add_root {
     my ($key, $model, undef) = @_;
     my $iter = $model->append(undef);
+    my $name = $key->get_name;
+    $name =~ s/\0/[NUL]/g;
+    my $timestamp = defined($key->get_timestamp)
+                  ? $key->get_timestamp_as_string
+                  : '';
+    my $class_name = defined($key->get_class_name)
+                   ? $key->get_class_name
+                   : '';
+    $class_name =~ s/\0/[NUL]/g;
     $model->set($iter,
-        0, $key->get_name,
-        1, $key->get_timestamp ? $key->get_timestamp_as_string : "",
-        2, $key->get_class_name ? $key->get_class_name : "",
+        0, $name,
+        1, $timestamp,
+        2, $class_name,
         3, $key,
     );
     my $dummy = $model->append($iter);
@@ -511,10 +513,19 @@ sub add_children {
     my @subkeys = $key->get_list_of_subkeys;
     foreach my $subkey (@subkeys) {
         my $child_iter = $model->append($iter);
+        my $name = $subkey->get_name;
+        $name =~ s/\0/[NUL]/g;
+        my $timestamp = defined($subkey->get_timestamp)
+                      ? $subkey->get_timestamp_as_string
+                      : '';
+        my $class_name = defined($subkey->get_class_name)
+                       ? $subkey->get_class_name
+                       : '';
+        $class_name =~ s/\0/[NUL]/g;
         $model->set($child_iter,
-            0, $subkey->get_name,
-            1, $subkey->get_timestamp ? $subkey->get_timestamp_as_string : "",
-            2, $subkey->get_class_name ? $subkey->get_class_name : "",
+            0, $name,
+            1, $timestamp,
+            2, $class_name,
             3, $subkey,
         );
         my $dummy = $model->append($child_iter); ### load gradually
@@ -537,7 +548,7 @@ sub expand_row {
 sub collapse_row {
     my ($view, $iter, $path) = @_;
 
-    return;
+    return; # uncomment to remove children when collapsing
 
     my $model = $view->get_model;
     my $child_iter = $model->iter_nth_child($iter, 0);
@@ -593,56 +604,10 @@ sub load_file {
                 $tree_columns[2]->set_visible(FALSE);
             }
         }
-        add_recent($filename);
     }
     else {
         show_message('error', "'$name' is not a registry file.");
     }
-}
-
-sub add_recent {
-    my $filename = shift;
-
-    # Add separator for recent files if it is not already there
-    if (!defined $recent_separator) {
-        $recent_separator = Gtk2::SeparatorMenuItem->new;
-        $file_menu->insert($recent_separator, 3);
-    }
-
-    # Check if filename already exists...
-    foreach my $recent (@recent) {
-        if ($filename eq $recent->{filename}) {
-            # It does, so move it to the top of the list
-            my $menuitem = $recent->{menuitem};
-            $file_menu->remove($menuitem);
-            $file_menu->insert($menuitem, 3);
-            return;
-        }
-    }
-
-    # Add menuitem
-    my $name = basename $filename;
-    $name =~ s/_/__/g;
-    if (my $menuitem = Gtk2::MenuItem->new($name)) {
-        $file_menu->insert($menuitem, 3);
-        $file_menu->show_all;
-        $menuitem->signal_connect('activate' => \&load_recent, $filename);
-        push @recent, {
-            filename => $filename,
-            menuitem => $menuitem,
-        };
-    }
-
-    # Restrict the number of recent files
-    if (@recent > 5) {
-        $recent[0]->{menuitem}->destroy;
-        shift @recent;
-    }
-}
-
-sub load_recent {
-    my ($menuitem, $filename) = @_;
-    load_file($filename);
 }
 
 sub choose_file {
@@ -705,7 +670,6 @@ sub close_file {
 }
 
 sub quit {
-    save_settings();
     $window->destroy;
 }
 
@@ -713,7 +677,7 @@ sub about {
     Gtk2->show_about_dialog(undef,
         'program-name' => $script_name,
         'version' => $Parse::Win32Registry::VERSION,
-        'copyright' => 'Copyright (c) 2008,2009 James Macfarlane',
+        'copyright' => 'Copyright (c) 2008,2009,2010 James Macfarlane',
         'comments' => 'GTK2 Registry Viewer for the Parse::Win32Registry module',
     );
 }
@@ -758,10 +722,17 @@ sub add_bookmark {
     my $iter = $tree_selection->get_selected;
     return if !defined $iter;
 
+    # Add separator for bookmarks if it is not already there
+    if (!defined $bookmarks_separator) {
+        $bookmarks_separator = Gtk2::SeparatorMenuItem->new;
+        $bookmarks_menu->append($bookmarks_separator);
+    }
+
     my $key = $tree_store->get($iter, 3);
 
     # Remove root key name to get subkey path
     my $subkey_path = (split(/\\/, $key->get_path, 2))[1];
+
     if (defined $subkey_path) {
         my $name = $key->get_name;
         create_bookmark_menuitem($name, $subkey_path);
@@ -839,10 +810,11 @@ sub find_matching_child_iter {
     }
 
     while (defined $child_iter) {
-        my $child_name = $tree_store->get($child_iter, 0);
         my $child_key = $tree_store->get($child_iter, 3);
 
-        if ($child_name eq $subkey_name) {
+        # $tree_store->get($child_iter, 0) contains the displayed name,
+        # $child_key->get_name is the actual name
+        if ($child_key->get_name eq $subkey_name) {
             return $child_iter; # match found
         }
         $child_iter = $tree_store->iter_next($child_iter);
@@ -919,6 +891,7 @@ sub find_next {
 
         # Remove root key name to get subkey path
         my $subkey_path = (split(/\\/, $key->get_path, 2))[1];
+
         if (!defined $subkey_path) {
             # go_to_subkey locates keys based on the subkey path
             # and does not support going to the root key.
@@ -968,12 +941,26 @@ sub find_next {
 sub find {
     return if !defined $tree_store->get_iter_first;
 
+    my $root_iter = $tree_store->get_iter_first;
+    return if !defined $root_iter;
+
+    my $root_key = $tree_store->get($root_iter, 3);
+    return if !defined $root_key;
+
+    my $selected_key;
+    my $iter = $tree_selection->get_selected;
+    if (defined $iter) {
+        $selected_key = $tree_store->get($iter, 3);
+    }
+
+    my $label = Gtk2::Label->new('Enter text to search for:');
+    $label->set_alignment(0, 0);
     my $entry = Gtk2::Entry->new;
     $entry->set_text($find_param);
     $entry->set_activates_default(TRUE);
-    my $check1 = Gtk2::CheckButton->new('Search _Keys');
+    my $check1 = Gtk2::CheckButton->new('Search _keys');
     $check1->set_active($search_keys);
-    my $check2 = Gtk2::CheckButton->new('Search _Values');
+    my $check2 = Gtk2::CheckButton->new('Search _values');
     $check2->set_active($search_values);
     $check1->signal_connect(toggled => sub {
         if (!$check1->get_active && !$check2->get_active) {
@@ -985,98 +972,51 @@ sub find {
             $check1->set_active(TRUE);
         }
     });
+    my $frame = Gtk2::Frame->new('Start searching');
+    my $vbox = Gtk2::VBox->new(FALSE, 0);
+    $frame->add($vbox);
+    my $radio1 = Gtk2::RadioButton->new(undef, 'from _root key');
+    my $radio2 = Gtk2::RadioButton->new($radio1, 'from c_urrent key');
+    if (!defined $selected_key) {
+        $radio2->set_sensitive(FALSE);
+    }
+    elsif ($search_selected) {
+        $radio2->set_active(TRUE);
+    }
+    $vbox->pack_start($radio1, TRUE, TRUE, 0);
+    $vbox->pack_start($radio2, TRUE, TRUE, 0);
+
     my $dialog = Gtk2::Dialog->new('Find',
         $window,
         'modal',
         'gtk-cancel' => 'cancel',
         'gtk-ok' => 'ok',
     );
-    $dialog->vbox->pack_start($entry, TRUE, TRUE, 0);
-    $dialog->vbox->pack_start($check1, TRUE, TRUE, 0);
-    $dialog->vbox->pack_start($check2, TRUE, TRUE, 0);
+    $dialog->vbox->set_spacing(5);
+    $dialog->vbox->pack_start($label, FALSE, TRUE, 0);
+    $dialog->vbox->pack_start($entry, FALSE, TRUE, 0);
+    $dialog->vbox->pack_start($check1, FALSE, TRUE, 0);
+    $dialog->vbox->pack_start($check2, FALSE, TRUE, 0);
+    $dialog->vbox->pack_start($frame, FALSE, TRUE, 0);
     $dialog->set_default_response('ok');
     $dialog->show_all;
 
     my $response = $dialog->run;
     $dialog->destroy;
 
-    my $root_iter = $tree_store->get_iter_first;
-    return if !defined $root_iter;
-
-    my $root_key = $tree_store->get($root_iter, 3);
-    return if !defined $root_key;
-
     if ($response eq 'ok') {
         $search_keys = $check1->get_active;
         $search_values = $check2->get_active;
+        $search_selected = $radio2->get_active;
         $find_param = $entry->get_text;
         $find_iter = undef;
         if ($find_param ne '') {
-            $find_iter = $root_key->get_subtree_iterator;
+            $find_iter = $search_selected
+                       ? $selected_key->get_subtree_iterator
+                       : $root_key->get_subtree_iterator;
             find_next;
         }
     }
-}
-
-sub save_settings {
-    if (defined $settings_file) {
-        if (open my $fh, ">", $settings_file) {
-            my ($x, $y) = $window->get_position;
-            my ($w, $h) = $window->get_size;
-            print {$fh} "main=${x}x${y}+${w}x${h}\n";
-
-            my $iter = $bookmark_store->get_iter_first;
-            while (defined $iter) {
-                my $name = $bookmark_store->get($iter, 0);
-                my $path = $bookmark_store->get($iter, 1);
-                print {$fh} "$name\t$path\n";
-                $iter = $bookmark_store->iter_next($iter);
-            }
-        }
-        else {
-            warn "Unable to save settings: $!\n";
-        }
-    }
-}
-
-sub load_settings {
-    if (defined $settings_file) {
-        if (open my $fh, "<", $settings_file) {
-            while (<$fh>) {
-                if (/main=(\d+)x(\d+)\+(\d+)x(\d+)/) {
-                    my ($x, $y, $w, $h) = ($1, $2, $3, $4);
-                    $window->move($x, $y);
-                    $window->resize($w, $h);
-                }
-                elsif (/^([^\t]*)\t(.*)$/) {
-                    my $name = $1;
-                    my $subkey_path = $2;
-                    create_bookmark_menuitem($name, $subkey_path);
-                }
-            }
-        }
-        else {
-            warn "Unable to load settings: $!\n";
-        }
-    }
-}
-
-sub dump_settings {
-    print "Dumping settings:\n";
-    my ($x, $y) = $window->get_position;
-    my ($width, $height) = $window->get_size;
-    print "window at $x x $y for $width x $height\n";
-
-    my $hpos = $hpaned->get_position;
-    print "hsplit at $hpos\n";
-
-    my $vpos = $vpaned->get_position;
-    print "vsplit at $vpos\n";
-
-    my ($bx, $by) = $bookmarks_dialog->get_position;
-    my ($bw, $bh) = $bookmarks_dialog->get_size;
-    print "bookmarks_dialog at $bx x $by for $bw x $bh\n";
-    save_settings();
 }
 
 sub dump_loaded_keys {
@@ -1110,10 +1050,12 @@ sub view_report {
 
         if (my $key = $root_key->get_subkey($path)) {
             my $str = $key->as_string . "\n";
+            $str =~ s/\0/[NUL]/g;
             $text_buffer->insert_at_cursor($str);
             foreach my $value ($key->get_list_of_values) {
                 my $value_name = $value->get_name;
                 $value_name = "(Default)" if $value_name eq "";
+                $value_name =~ s/\0/[NUL]/g;
                 my $value_type = $value->get_type_as_string;
                 my $str = "$value_name ($value_type):\n";
                 $str .= hexdump($value->get_raw_data);
