@@ -1,5 +1,25 @@
 Revision history for Perl extension Parse::Win32Registry.
 
+** 1.0 2012-04-29
+
+Added support for decoding System Mandatory Label ACEs (a feature
+introduced with Windows Vista) and added the command line script
+regml.pl for listing keys with explicit System Mandatory Label ACEs
+set. Improved handling of security descriptors.
+
+Tidied up various aspects of the wxWidgets and GTK applications, and
+harmonised functionality between the various pairs of equivalent
+programs, with a minor difference being the wxWidgets applications
+following Windows keyboard shortcut conventions while the GTK
+applications following Linux keyboard shortcut conventions.
+
+The get_data method of Value objects now returns the unpacked integer
+value for REG_DWORD_BIG_ENDIAN value types instead of the original
+packed binary data.
+
+Added support for values with 'big data'. Thanks to Harlan Carvey for
+all his help with this.
+
 ** 0.60 2010-08-15
 
 Parse::Win32Registry now requires Perl 5.8.1.

@@ -116,6 +116,6 @@ $script_name <filename> [subkey] [-r] [-v] [-x] [-c] [-s] [-o]
     -s or --security    display the security information for the key,
                         including the owner and group SIDs,
                         and the system and discretionary ACLs (if present)
-    -o or --owner       display only the owner SID for the key (if present)
+    -o or --owner       display the owner SID for the key (if present)
 USAGE
 }

@@ -68,7 +68,7 @@ sub get_data_as_string {
         my $i = 0;
         return join(' ', map { "[" . $i++ . "] $_" } @data);
     }
-    elsif ($type == REG_DWORD) {
+    elsif ($type == REG_DWORD || $type == REG_DWORD_BIG_ENDIAN) {
         return sprintf '0x%08x (%u)', $data, $data;
     }
     else {

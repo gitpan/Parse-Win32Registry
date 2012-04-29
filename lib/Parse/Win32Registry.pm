@@ -4,7 +4,7 @@ use 5.008_001;
 use strict;
 use warnings;
 
-our $VERSION = '0.60';
+our $VERSION = '1.0';
 
 use base qw(Exporter);
 
@@ -37,14 +37,6 @@ sub enable_warnings {
 
 sub disable_warnings {
     $Parse::Win32Registry::Base::WARNINGS = 0;
-}
-
-sub enable_trace {
-    $Parse::Win32Registry::Base::TRACE = 1;
-}
-
-sub disable_trace {
-    $Parse::Win32Registry::Base::TRACE = 0;
 }
 
 sub set_codepage {
@@ -1585,7 +1577,7 @@ Type regdump.pl on its own to see the help:
         -s or --security    display the security information for the key,
                             including the owner and group SIDs,
                             and the system and discretionary ACLs (if present)
-        -o or --owner       display only the owner SID for the key (if present)
+        -o or --owner       display the owner SID for the key (if present)
 
 The contents of the root key will be displayed unless a subkey is
 specified. Paths to subkeys are always specified relative to the root
@@ -1658,6 +1650,20 @@ To list all REG_MULTI_SZ values:
 
 Search strings are not case-sensitive.
 
+=head2 regml.pl
+
+regml.pl will display those keys with explicit System Mandatory Label ACEs
+set in the System ACL.
+This feature was introduced with Windows Vista, and is used by applications
+such as Internet Explorer running in Protected Mode.
+Note that if a key does not have an explicit System Mandatory Label ACE,
+it has Medium Integrity Level.
+Only Windows NT registry files can contain System Mandatory Label ACEs.
+
+Type regml.pl on its own to see the help:
+
+    regml.pl <filename>
+
 =head2 regmultidiff.pl
 
 regmultidiff.pl can be used to compare multiple registry files
@@ -1689,7 +1695,6 @@ Type regscan.pl on its own to see the help:
         -p or --parse-info  show the technical information for an entry
                             instead of the string representation
         -u or --unparsed    show the unparsed on-disk entries as a hex dump
-        -w or --warnings    display warnings of invalid keys and values
 
 =head2 regsecurity.pl
 
@@ -1816,7 +1821,7 @@ James Macfarlane, E<lt>jmacfarla@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2006,2007,2008,2009,2010 by James Macfarlane
+Copyright (C) 2006-2012 by James Macfarlane
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

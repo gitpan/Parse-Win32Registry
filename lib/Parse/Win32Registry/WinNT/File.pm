@@ -107,6 +107,7 @@ sub get_virtual_root_key {
     my $fake_root = shift;
 
     my $root_key = $self->get_root_key;
+    return if !defined $root_key;
 
     if (!defined $fake_root) {
         # guess virtual root from filename

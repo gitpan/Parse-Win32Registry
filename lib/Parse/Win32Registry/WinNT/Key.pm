@@ -90,6 +90,11 @@ sub new {
     }
     # allocated should be true
 
+    if ($length < NK_HEADER_LENGTH) {
+        warnf('Invalid value entry length at 0x%x', $offset);
+        return;
+    }
+
     if ($sig ne 'nk') {
         warnf('Invalid signature for key at 0x%x', $offset);
         return;
@@ -100,6 +105,7 @@ sub new {
         warnf('Could not read name for key at 0x%x', $offset);
         return;
     }
+
     if ($flags & 0x20) {
         $name = decode($Parse::Win32Registry::Base::CODEPAGE, $name);
     }
@@ -330,7 +336,6 @@ sub _get_offsets_to_subkeys {
     }
     elsif ($sig eq 'ri') {
         foreach my $offset (unpack("V$num_entries", $subkey_list)) {
-            $self->{_indirect_offsets}{OFFSET_TO_FIRST_HBIN + $offset} = undef;
             my $offsets_ref =
                 $self->_get_offsets_to_subkeys(OFFSET_TO_FIRST_HBIN + $offset);
             if (defined $offsets_ref && ref $offsets_ref eq 'ARRAY') {
@@ -434,39 +439,6 @@ sub get_value_iterator {
         }
         return; # no more offsets to values
     });
-}
-
-sub get_associated_offsets {
-    my $self = shift;
-
-    my @owners = ();
-
-    push @owners, $self->{_offset};
-
-    if ($self->{_offset_to_security}) {
-        push @owners, $self->{_offset_to_security};
-    }
-
-    if ($self->{_offset_to_class_name}) {
-        push @owners, $self->{_offset_to_class_name};
-    }
-
-    if ($self->{_num_subkeys}) {
-        push @owners, $self->{_offset_to_subkey_list};
-    }
-
-    # Indirect offsets must be added after _get_offsets_to_subkeys
-    # has been called (as this populates the _indirect_offsets field)
-    $self->_get_offsets_to_subkeys;
-    if ($self->{_indirect_offsets}) {
-        push @owners, keys %{ $self->{_indirect_offsets} };
-    }
-
-    if ($self->{_num_values}) {
-        push @owners, $self->{_offset_to_value_list};
-    }
-
-    return @owners;
 }
 
 1;

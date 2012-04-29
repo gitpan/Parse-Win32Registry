@@ -90,6 +90,15 @@ sub get_data {
             $data = undef;
         }
     }
+    elsif ($type == REG_DWORD_BIG_ENDIAN) {
+        if (length($data) == 4) {
+            $data = unpack('N', $data);
+        }
+        else {
+            # incorrect length for dword data
+            $data = undef;
+        }
+    }
     elsif ($type == REG_SZ || $type == REG_EXPAND_SZ) {
         # Snip off any terminating null.
         # Typically, REG_SZ values will not have a terminating null,
@@ -118,13 +127,19 @@ sub as_regedit_export {
 
     my $type = $self->get_type;
 
+    # XXX
+#    if (!defined $self->{_data}) {
+#        $name = $name eq '' ? '@' : qq{"$name"};
+#        return qq{; $name=(invalid data)\n};
+#    }
+
     if ($type == REG_SZ) {
         $export .= '"' . $self->get_data . '"';
         $export .= "\n";
     }
     elsif ($type == REG_BINARY) {
         $export .= 'hex:';
-        $export .= format_octets($self->get_data, length($export));
+        $export .= format_octets($self->{_data}, length($export));
     }
     elsif ($type == REG_DWORD) {
         my $data = $self->get_data;
@@ -141,9 +156,8 @@ sub as_regedit_export {
         $export .= format_octets($data, length($export));
     }
     else {
-        my $data = $self->get_data;
         $export .= sprintf("hex(%x):", $type);
-        $export .= format_octets($data, length($export));
+        $export .= format_octets($self->{_data}, length($export));
     }
     return $export;
 }
@@ -158,16 +172,6 @@ sub parse_info {
         $self->{_type},
         $self->{_data_length};
     return $info;
-}
-
-sub get_associated_offsets {
-    my $self = shift;
-
-    my @owners = ();
-
-    push @owners, $self->{_offset};
-
-    return @owners;
 }
 
 1;

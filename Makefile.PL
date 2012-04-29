@@ -23,6 +23,7 @@ WriteMakefile(
         'bin/regdump.pl',
         'bin/regexport.pl',
         'bin/regfind.pl',
+        'bin/regml.pl',
         'bin/regmultidiff.pl',
         'bin/regscan.pl',
         'bin/regsecurity.pl',

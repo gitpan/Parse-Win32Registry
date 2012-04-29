@@ -3,14 +3,9 @@ use strict;
 use warnings;
 
 use File::Basename;
-use Getopt::Long;
 use Parse::Win32Registry 0.50;
 
 binmode(STDOUT, ':utf8');
-
-Getopt::Long::Configure('bundling');
-
-GetOptions('unparsed|u' => \my $show_unparsed);
 
 my $filename = shift or die usage();
 
@@ -26,7 +21,7 @@ my $security = $root_key->get_security
 my %offsets_seen = ();
 my $offset = $security->get_offset;
 while (!exists $offsets_seen{$offset}) {
-    $offsets_seen{$offset} = $security;
+    $offsets_seen{$offset} = undef; # value not required
 
     printf "Security at offset 0x%x, %d references\n",
         $offset, $security->get_reference_count;

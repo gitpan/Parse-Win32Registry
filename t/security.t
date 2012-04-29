@@ -174,6 +174,19 @@ my @ace_tests = (
         "\x01\xff\x00\x00\x00\x00\x00\x05\x0c\x00\x00\x00",
         undef,
     ],
+    [
+        "ACE11",
+        "\x11\x00\x14\x00\x01\x00\x00\x00".
+        "\x01\x01\x00\x00\x00\x00\x00\x10\x00\x10\x00\x00",
+        {
+            type => 17,
+            type_as_string => 'SYSTEM_MANDATORY_LABEL',
+            flags => 0x00,
+            mask => 0x00000001,
+            trustee => "S-1-16-4096",
+        },
+        20,
+    ],
 );
 
 sub check_ace {

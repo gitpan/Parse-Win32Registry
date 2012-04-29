@@ -170,22 +170,21 @@ my $uimanager = Gtk2::UIManager->new;
 my @actions = (
     # name, stock id, label
     ['FileMenu', undef, '_File'],
+    ['EditMenu', undef, '_Edit'],
     ['SearchMenu', undef, '_Search'],
-    ['BookmarksMenu', undef, '_Bookmarks'],
     ['ViewMenu', undef, '_View'],
     ['HelpMenu', undef, '_Help'],
     # name, stock-id, label, accelerator, tooltip, callback
     ['Open', 'gtk-open', '_Select Files...', '<control>O', undef, \&open_files],
     ['Close', 'gtk-close', '_Close Files', '<control>W', undef, \&close_files],
     ['Quit', 'gtk-quit', '_Quit', '<control>Q', undef, \&quit],
+    ['Copy', 'gtk-copy', '_Copy Path', '<control>C', undef, \&copy_path],
     ['Find', 'gtk-find', '_Find...', '<control>F', undef, \&find],
     ['FindNext', undef, 'Find _Next', '<control>G', undef, \&find_next],
     ['FindNext2', undef, 'Find Next', 'F3', undef, \&find_next],
     ['FindChange', 'gtk-find-and-replace', 'Find _Change...', '<control>N', undef, \&find_change],
     ['FindNextChange', undef, 'Find N_ext Change', '<control>M', undef, \&find_next_change],
     ['FindNextChange2', undef, 'Find Next Change', 'F4', undef, \&find_next_change],
-    ['AddBookmark', 'gtk-add', '_Add Bookmark', '<control>D', undef, \&add_bookmark],
-    ['EditBookmarks', undef, '_Edit Bookmarks...', '<control>B', undef, \&edit_bookmarks],
     ['About', 'gtk-about', '_About...', undef, undef, \&about],
 );
 
@@ -194,16 +193,11 @@ $default_actions->add_actions(\@actions, undef);
 
 my @toggle_actions = (
     # name, stock id, label, accelerator, tooltip, callback, active
-    ['ShowDetail', 'gtk-edit', 'Show _Detail', '<control>X', undef, \&toggle_item_detail, TRUE],
+    ['ShowDetail', 'gtk-edit', 'Show _Detail', '<control>D', undef, \&toggle_item_detail, TRUE],
 );
 $default_actions->add_toggle_actions(\@toggle_actions, undef);
 
-my $bookmark_actions = Gtk2::ActionGroup->new('actions2'); # bookmarks
-my $bookmarks_merge_id = $uimanager->new_merge_id;
-my $action_name = 1; # unique action name
-
 $uimanager->insert_action_group($default_actions, 0);
-$uimanager->insert_action_group($bookmark_actions, 1);
 
 my $ui_info = <<END_OF_UI;
 <ui>
@@ -214,17 +208,15 @@ my $ui_info = <<END_OF_UI;
             <separator/>
             <menuitem action='Quit'/>
         </menu>
+        <menu action='EditMenu'>
+            <menuitem action='Copy'/>
+        </menu>
         <menu action='SearchMenu'>
             <menuitem action='Find'/>
             <menuitem action='FindNext'/>
             <separator/>
             <menuitem action='FindChange'/>
             <menuitem action='FindNextChange'/>
-        </menu>
-        <menu action='BookmarksMenu'>
-            <menuitem action='AddBookmark'/>
-            <menuitem action='EditBookmarks'/>
-            <separator/>
         </menu>
         <menu action='ViewMenu'>
             <menuitem action='ShowDetail'/>
@@ -242,7 +234,6 @@ END_OF_UI
 $uimanager->add_ui_from_string($ui_info);
 
 my $menubar = $uimanager->get_widget('/MenuBar');
-my $bookmarks_menu = $uimanager->get_widget('/MenuBar/BookmarksMenu')->get_submenu;
 
 ### STATUSBAR
 
@@ -363,119 +354,6 @@ sub build_open_files_dialog {
 }
 
 my $open_files_dialog = build_open_files_dialog;
-
-### BOOKMARKS STORE
-
-use constant {
-    BMCOL_NAME => 0,
-    BMCOL_LOCATION => 1,
-    BMCOL_ICON => 2,
-};
-
-my $bookmark_store = Gtk2::ListStore->new(
-    'Glib::String', 'Glib::Scalar', 'Glib::String',
-);
-
-sub build_bookmarks_dialog {
-    my $bookmark_view = Gtk2::TreeView->new($bookmark_store);
-    $bookmark_view->set_reorderable(TRUE);
-
-    my $bookmark_icon_cell = Gtk2::CellRendererPixbuf->new;
-    my $bookmark_name_cell = Gtk2::CellRendererText->new;
-    my $bookmark_column0 = Gtk2::TreeViewColumn->new;
-    $bookmark_column0->set_title('Bookmark');
-    $bookmark_column0->pack_start($bookmark_icon_cell, FALSE);
-    $bookmark_column0->pack_start($bookmark_name_cell, TRUE);
-    $bookmark_column0->set_attributes($bookmark_icon_cell,
-        'stock-id', BMCOL_ICON);
-    $bookmark_column0->set_attributes($bookmark_name_cell,
-        'text', BMCOL_NAME);
-    $bookmark_column0->set_resizable(TRUE);
-    $bookmark_view->append_column($bookmark_column0);
-
-    my $bookmark_location_cell = Gtk2::CellRendererText->new;
-    my $bookmark_column1 = $bookmark_view->insert_column_with_data_func(
-        1, 'Path From Root', $bookmark_location_cell,
-        sub {
-            my ($column, $cell, $model, $iter, $num) = @_;
-            my $location = $model->get($iter, BMCOL_LOCATION);
-            if (defined $location) {
-                my ($subkey_path, $value_name) = @$location;
-                my $string = $subkey_path;
-                if (defined $value_name) {
-                    $value_name = '(Default)' if $value_name eq '';
-                    $string .= ", $value_name";
-                }
-                $cell->set('text', $string);
-            }
-            else {
-                $cell->set('text', '?');
-            }
-        },
-    );
-    $bookmark_location_cell->set('ellipsize', 'end');
-
-    my $scrolled_bookmark_view = Gtk2::ScrolledWindow->new;
-    $scrolled_bookmark_view->set_policy('automatic', 'automatic');
-    $scrolled_bookmark_view->set_shadow_type('in');
-    $scrolled_bookmark_view->add($bookmark_view);
-
-    my $label = Gtk2::Label->new;
-    $label->set_markup('<i>Drag bookmarks to reorder them</i>');
-
-    my $dialog = Gtk2::Dialog->new('Edit Bookmarks', $window, 'modal',
-        'gtk-remove' => 50,
-        'gtk-ok' => 'ok',
-    );
-    $dialog->resize($window_width * 0.8, $window_height * 0.8);
-    $dialog->vbox->pack_start($scrolled_bookmark_view, TRUE, TRUE, 0);
-    $dialog->vbox->pack_start($label, FALSE, FALSE, 5);
-    $dialog->set_default_response('ok');
-
-    $dialog->signal_connect(delete_event => sub {
-        $dialog->hide;
-        return TRUE;
-    });
-    $dialog->signal_connect(response => sub {
-        my ($dialog, $response) = @_;
-        if ($response eq '50') {
-            # Remove selected bookmark
-            my $selection = $bookmark_view->get_selection;
-            my $iter = $selection->get_selected;
-            if (defined $iter) {
-                $bookmark_store->remove($iter);
-            }
-        }
-        else {
-            # Before exiting, move menuitems into current bookmark order
-            $uimanager->remove_ui($bookmarks_merge_id);
-            $uimanager->ensure_update;
-            foreach my $action ($bookmark_actions->list_actions) {
-                $bookmark_actions->remove_action($action);
-            }
-            $action_name = 1;
-            my $iter = $bookmark_store->get_iter_first;
-            while (defined $iter) {
-                my $bookmark_name = $bookmark_store->get($iter, BMCOL_NAME);
-                my $location = $bookmark_store->get($iter, BMCOL_LOCATION);
-                my $icon = $bookmark_store->get($iter, BMCOL_ICON);
-                my $display_name = $bookmark_name;
-                $display_name =~ s/_/__/g;
-                $bookmark_actions->add_actions([
-                    [$action_name, $icon, $display_name, undef, undef, \&go_to_bookmark],
-                ], $location);
-                $uimanager->add_ui($bookmarks_merge_id, '/MenuBar/BookmarksMenu', $action_name, $action_name, 'menuitem', FALSE);
-                $action_name++;
-                $iter = $bookmark_store->iter_next($iter);
-            }
-            $dialog->hide;
-        }
-    });
-
-    return $dialog;
-}
-
-my $bookmarks_dialog = build_bookmarks_dialog;
 
 ######################## GLOBAL SETUP
 
@@ -917,7 +795,7 @@ sub about {
     Gtk2->show_about_dialog(undef,
         'program-name' => $script_name,
         'version' => $Parse::Win32Registry::VERSION,
-        'copyright' => 'Copyright (c) 2008,2009,2010 James Macfarlane',
+        'copyright' => 'Copyright (c) 2008-2012 James Macfarlane',
         'comments' => 'GTK2 Registry Compare for the Parse::Win32Registry module',
     );
 }
@@ -936,6 +814,36 @@ sub show_message {
     $dialog->set_title(ucfirst $type);
     $dialog->run;
     $dialog->destroy;
+}
+
+sub get_location {
+    my ($model, $iter) = $tree_selection->get_selected;
+    if (defined $model && defined $iter) {
+        my $keys = $model->get($iter, TREECOL_KEYS);
+        my $values = $model->get($iter, TREECOL_VALUES);
+        return ($keys, $values);
+    }
+    else {
+        return ();
+    }
+}
+
+sub copy_path {
+    my ($keys, $values) = get_location;
+    my $clip = '';
+    if (defined $keys) {
+        my $any_key = (grep { defined } @$keys)[0];
+
+        if (defined $values) { # only values
+            my $any_value = (grep { defined } @$values)[0];
+            $clip = $any_key->get_path . ", " . $any_value->get_name;
+        }
+        else {
+            $clip = $any_key->get_path;
+        }
+    }
+    my $clipboard = Gtk2::Clipboard->get(Gtk2::Gdk->SELECTION_CLIPBOARD);
+    $clipboard->set_text($clip);
 }
 
 sub find_matching_child_iter {
@@ -1035,18 +943,6 @@ sub get_search_message {
         $message = "Searching registry values...";
     }
     return $message;
-}
-
-sub get_location {
-    my ($model, $iter) = $tree_selection->get_selected;
-    if (defined $model && defined $iter) {
-        my $keys = $model->get($iter, TREECOL_KEYS);
-        my $values = $model->get($iter, TREECOL_VALUES);
-        return ($keys, $values);
-    }
-    else {
-        return ();
-    }
 }
 
 sub find_next {
@@ -1171,13 +1067,12 @@ sub find {
     $dialog->show_all;
 
     my $response = $dialog->run;
-    $dialog->destroy;
-
     if ($response eq 'ok' && @root_keys > 0) {
         $search_keys = $check1->get_active;
         $search_values = $check2->get_active;
         $search_selected = $radio2->get_active;
         $find_param = $entry->get_text;
+        $dialog->destroy;
         $find_iter = undef;
         if ($find_param ne '') {
             $find_iter = $search_selected
@@ -1185,6 +1080,9 @@ sub find {
                        : make_multiple_subtree_iterator(@root_keys);
             find_next;
         }
+    }
+    else {
+        $dialog->destroy;
     }
 }
 
@@ -1309,71 +1207,18 @@ sub find_change {
     $dialog->show_all;
 
     my $response = $dialog->run;
-    $dialog->destroy;
-
     if ($response eq 'ok') {
         $search_keys = $check1->get_active;
         $search_values = $check2->get_active;
         $search_selected = $radio2->get_active;
+        $dialog->destroy;
         $change_iter = $search_selected
                      ? make_multiple_subtree_iterator(@$selected_keys)
                      : make_multiple_subtree_iterator(@root_keys);
         $change_iter->get_next; # skip the starting key
         find_next_change;
     }
-}
-
-sub add_bookmark {
-    my ($keys, $values) = get_location;
-    if (defined $keys) {
-        my $any_key = (grep { defined } @$keys)[0];
-        my $key_path = $any_key->get_path;
-        my $key_name = $any_key->get_name;
-
-        # Remove root key name to get subkey path
-        my $subkey_path = (split(/\\/, $key_path, 2))[1];
-        return if !defined $subkey_path;
-
-        my $bookmark_name;
-        my $location;
-        my $icon;
-        if (defined $values) {
-            my $any_value = (grep { defined } @$values)[0];
-            my $value_name = $any_value->get_name;
-            $location = [$subkey_path, $value_name];
-            $value_name = '(Default)' if $value_name eq '';
-            $bookmark_name = "$value_name";
-            $icon = 'gtk-file';
-        }
-        else {
-            $bookmark_name = $key_name;
-            $location = [$subkey_path];
-            $icon = 'gtk-directory';
-        }
-        $bookmark_name =~ s/\0/[NUL]/g;
-        my $display_name = $bookmark_name;
-        $display_name =~ s/_/__/g;
-        $bookmark_actions->add_actions([
-            [$action_name, $icon, $display_name, undef, undef, \&go_to_bookmark],
-        ], $location);
-        $uimanager->add_ui($bookmarks_merge_id, '/MenuBar/BookmarksMenu', $action_name, $action_name, 'menuitem', FALSE);
-        $action_name++;
-        if (my $iter = $bookmark_store->append) {
-            $bookmark_store->set($iter,
-                BMCOL_NAME, $bookmark_name,
-                BMCOL_LOCATION, $location,
-                BMCOL_ICON, $icon,
-            );
-        }
+    else {
+        $dialog->destroy;
     }
-}
-
-sub edit_bookmarks {
-    $bookmarks_dialog->show_all;
-}
-
-sub go_to_bookmark {
-    my ($menuitem, $location) = @_;
-    my ($subkey_path, $value_name) = @$location;
-    go_to_subkey_and_value($subkey_path, $value_name);
 }

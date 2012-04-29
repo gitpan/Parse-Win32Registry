@@ -427,7 +427,7 @@ sub about {
     Gtk2->show_about_dialog(undef,
         'program-name' => $script_name,
         'version' => $Parse::Win32Registry::VERSION,
-        'copyright' => 'Copyright (c) 2009,2010 James Macfarlane',
+        'copyright' => 'Copyright (c) 2009-2012 James Macfarlane',
         'comments' => 'GTK2 Registry Scope for the Parse::Win32Registry module',
     );
 }
@@ -490,34 +490,31 @@ sub find_next {
     $dialog->show_all;
 
     my $id = Glib::Idle->add(sub {
-            my $entry = $find_iter->get_next;
-            if (defined $entry) {
-                my $found = 0;
-
-                if (index($entry->get_raw_bytes, $find_param) > -1) {
+        my $entry = $find_iter->get_next;
+        if (defined $entry) {
+            my $found = 0;
+            if (index(lc $entry->get_raw_bytes, lc $find_param) > -1) {
+                $found = 1;
+            }
+            else {
+                my $uni_find_param = encode("UCS-2LE", $find_param);
+                if (index(lc $entry->get_raw_bytes, lc $uni_find_param) > -1) {
                     $found = 1;
                 }
-                else {
-                    my $uni_find_param = encode("UCS-2LE", $find_param);
-                    if (index($entry->get_raw_bytes, $uni_find_param) > -1) {
-                        $found = 1;
-                    }
-                }
-
-                if ($found) {
-                    go_to_block($entry->get_offset);
-                    go_to_entry($entry->get_offset);
-
-                    $dialog->response(50);
-                    return FALSE;
-                }
-
-                return TRUE; # continue searching...
             }
+            if ($found) {
+                go_to_block($entry->get_offset);
+                go_to_entry($entry->get_offset);
+
+                $dialog->response(50);
+                return FALSE;
+            }
+
+            return TRUE; # continue searching...
+        }
 
         $dialog->response('ok');
         return FALSE;
-
     });
 
     my $response = $dialog->run;
@@ -552,15 +549,17 @@ sub find {
     $dialog->show_all;
 
     my $response = $dialog->run;
-    $dialog->destroy;
-
     if ($response eq 'ok') {
         $find_param = $entry->get_text;
+        $dialog->destroy;
         $find_iter = undef;
         if ($find_param ne '') {
             $find_iter = $registry->get_entry_iterator;
             find_next;
         }
+    }
+    else {
+        $dialog->destroy;
     }
 }
 
@@ -583,6 +582,7 @@ sub go_to_offset {
     $entry->set_position(-1);
 
     my $response = $dialog->run;
+    my $answer = $entry->get_text;
     $dialog->destroy;
 
     if ($response ne 'ok') {
@@ -591,7 +591,6 @@ sub go_to_offset {
 
     my $offset;
     eval {
-        my $answer = $entry->get_text;
         if ($answer =~ m/^\s*0x[\da-fA-F]+\s*$/ || $answer =~ m/^\s*\d+\s*$/) {
             $offset = int(eval $answer);
         }

@@ -131,43 +131,6 @@ sub OnTreeItemExpanding {
     }
 }
 
-sub DumpLoadedEntries {
-    my ($self) = @_;
-
-    my $root_item = $self->GetRootItem;
-    my @items;
-    if ($root_item->IsOk) {
-        push @items, $root_item;
-    }
-    while (@items) {
-        my $item = shift @items;
-
-        my ($changes, $keys, $values) = @{$self->GetPlData($item)};
-
-        my $num_changes = grep { $_ } @$changes;
-        printf "%2d", $num_changes;
-
-        my $any_key = (grep { defined } @$keys)[0];
-        print " ", $any_key->get_path;
-
-        if (defined $values) {
-            my $any_value = (grep { defined } @$values)[0];
-            my $name = $any_value->get_name;
-            $name = "(Default)" if $name eq '';
-            print " ", $name;
-        }
-        print "\n";
-
-        if ($self->ItemHasChildren($item)) {
-            my ($child_item, $cookie) = $self->GetFirstChild($item);
-            while ($child_item->IsOk) {
-                push @items, $child_item;
-                ($child_item, $cookie) = $self->GetNextChild($item, $cookie);
-            }
-        }
-    }
-}
-
 sub FindMatchingKey {
     my ($self, $item, $key_name) = @_;
 
@@ -456,8 +419,7 @@ sub new {
     $menu1->Append(wxID_EXIT, "E&xit\tAlt+F4");
 
     my $menu2 = Wx::Menu->new;
-    $menu2->Append(wxID_COPY, "&Copy Key Path\tCtrl+C");
-#    $menu2->Append(ID_DUMP_ENTRIES, "Dump Loaded Entries");
+    $menu2->Append(wxID_COPY, "&Copy Path\tCtrl+C");
 
     my $menu3 = Wx::Menu->new;
     $menu3->Append(wxID_FIND, "&Find...\tCtrl+F");
@@ -488,7 +450,6 @@ sub new {
     EVT_MENU($self, wxID_CLOSE, \&OnCloseFiles);
     EVT_MENU($self, wxID_EXIT, \&OnQuit);
     EVT_MENU($self, wxID_COPY, \&OnCopy);
-    EVT_MENU($self, ID_DUMP_ENTRIES, sub { $_[0]->{_tree}->DumpLoadedEntries; });
     EVT_MENU($self, wxID_FIND, \&OnFind);
     EVT_MENU($self, ID_FIND_NEXT, \&FindNext);
     EVT_MENU($self, wxID_REPLACE, \&OnFindChange);
@@ -507,7 +468,7 @@ sub new {
 
     my $list = EntryListCtrl->new($vsplitter);
 
-    my $text = Wx::TextCtrl->new($vsplitter, -1, '', wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE|wxTE_DONTWRAP);
+    my $text = Wx::TextCtrl->new($vsplitter, -1, '', wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE|wxTE_DONTWRAP|wxTE_READONLY);
     $text->SetFont(Wx::Font->new(10, wxMODERN, wxNORMAL, wxNORMAL));
 
     $vsplitter->SplitHorizontally($list, $text);
@@ -524,19 +485,19 @@ sub new {
     EVT_TREE_SEL_CHANGED($self, $tree, \&OnEntryTreeSelChanged);
     EVT_LIST_ITEM_SELECTED($self, $list, \&OnEntryListItemSelected);
 
-    if (@ARGV) {
-        $self->LoadFiles(@ARGV);
-    }
-    else {
-        $self->{_registries} = [];
-    }
-
     $self->SetIcon(Wx::GetWxPerlIcon());
 
     my $accelerators = Wx::AcceleratorTable->new(
         [wxACCEL_CTRL, ord('Q'), wxID_EXIT],
     );
     $self->SetAcceleratorTable($accelerators);
+
+    if (@ARGV) {
+        $self->LoadFiles(@ARGV);
+    }
+    else {
+        $self->{_registries} = [];
+    }
 
     return $self;
 }
@@ -560,7 +521,7 @@ sub OnCopy {
     if (defined $keys) {
         my $any_key = (grep { defined } @$keys)[0];
 
-        if (defined $values) { # only values
+        if (defined $values) {
             my $any_value = (grep { defined } @$values)[0];
             $clip = $any_key->get_path . ", " . $any_value->get_name;
         }
@@ -655,7 +616,7 @@ sub OnAbout {
     my $info = Wx::AboutDialogInfo->new;
     $info->SetName($FindBin::Script);
     $info->SetVersion($Parse::Win32Registry::VERSION);
-    $info->SetCopyright("Copyright (c) 2010 James Macfarlane");
+    $info->SetCopyright("Copyright (c) 2010-2012 James Macfarlane");
     $info->SetDescription("wxWidgets Registry Compare for the Parse::Win32Registry module");
     Wx::AboutBox($info);
 }
@@ -1085,25 +1046,26 @@ sub GetSearchSelected {
 sub SetSearchKeys {
     my ($self, $state) = @_;
     $state = 1 if !defined $state;
-    return $self->{_check1}->SetValue($state);
+    $self->{_check1}->SetValue($state);
 }
 
 sub SetSearchValues {
     my ($self, $state) = @_;
     $state = 1 if !defined $state;
-    return $self->{_check2}->SetValue($state);
+    $self->{_check2}->SetValue($state);
 }
 
 sub SetText {
     my ($self, $value) = @_;
     $value = '' if !defined $value;
-    return $self->{_text}->ChangeValue($value);
+    $self->{_text}->ChangeValue($value);
+    $self->{_text}->SetSelection(-1, -1);
 }
 
 sub SetSearchSelected {
     my ($self, $n) = @_;
     $n = 0 if !defined $n;
-    return $self->{_radio}->SetSelection($n);
+    $self->{_radio}->SetSelection($n);
 }
 
 
@@ -1180,19 +1142,19 @@ sub GetSearchSelected {
 sub SetSearchKeys {
     my ($self, $state) = @_;
     $state = 1 if !defined $state;
-    return $self->{_check1}->SetValue($state);
+    $self->{_check1}->SetValue($state);
 }
 
 sub SetSearchValues {
     my ($self, $state) = @_;
     $state = 1 if !defined $state;
-    return $self->{_check2}->SetValue($state);
+    $self->{_check2}->SetValue($state);
 }
 
 sub SetSearchSelected {
     my ($self, $n) = @_;
     $n = 0 if !defined $n;
-    return $self->{_radio}->SetSelection($n);
+    $self->{_radio}->SetSelection($n);
 }
 
 

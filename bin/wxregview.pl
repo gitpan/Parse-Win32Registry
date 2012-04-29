@@ -84,30 +84,6 @@ sub OnTreeItemExpanding {
     }
 }
 
-sub DumpLoadedKeys {
-    my ($self) = @_;
-
-    my $root_item = $self->GetRootItem;
-    my @items;
-    if ($root_item->IsOk) {
-        push @items, $root_item;
-    }
-    while (@items) {
-        my $item = shift @items;
-
-        my $key = $self->GetPlData($item);
-        print $key->get_path, "\n";
-
-        if ($self->ItemHasChildren($item)) {
-            my ($child_item, $cookie) = $self->GetFirstChild($item);
-            while ($child_item->IsOk) {
-                push @items, $child_item;
-                ($child_item, $cookie) = $self->GetNextChild($item, $cookie);
-            }
-        }
-    }
-}
-
 sub FindMatchingItem {
     my ($self, $key_name, $item) = @_;
 
@@ -305,7 +281,6 @@ sub new {
 
     my $menu2 = Wx::Menu->new;
     $menu2->Append(wxID_COPY, "&Copy Key Path\tCtrl+C");
-#    $menu2->Append(ID_DUMP_KEYS, "Dump Loaded Keys");
 
     my $menu3 = Wx::Menu->new;
     $menu3->Append(wxID_FIND, "&Find...\tCtrl+F");
@@ -335,7 +310,6 @@ sub new {
     EVT_MENU($self, wxID_CLOSE, \&OnCloseFile);
     EVT_MENU($self, wxID_EXIT, \&OnQuit);
     EVT_MENU($self, wxID_COPY, \&OnCopy);
-    EVT_MENU($self, ID_DUMP_KEYS, sub { $_[0]->{_tree}->DumpLoadedKeys; });
     EVT_MENU($self, wxID_FIND, \&OnFind);
     EVT_MENU($self, ID_FIND_NEXT, \&FindNext);
     EVT_MENU($self, ID_TIMELINE, \&ShowTimeline);
@@ -353,7 +327,7 @@ sub new {
 
     my $list = ValueListCtrl->new($vsplitter);
 
-    my $text = Wx::TextCtrl->new($vsplitter, -1, '', wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE|wxTE_DONTWRAP);
+    my $text = Wx::TextCtrl->new($vsplitter, -1, '', wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE|wxTE_DONTWRAP|wxTE_READONLY);
     # Set a monospaced font
     $text->SetFont(Wx::Font->new(10, wxMODERN, wxNORMAL, wxNORMAL));
 
@@ -371,17 +345,17 @@ sub new {
     EVT_TREE_SEL_CHANGED($self, $tree, \&OnKeyTreeSelChanged);
     EVT_LIST_ITEM_SELECTED($self, $list, \&OnValueListItemSelected);
 
-    my $filename = shift @ARGV;
-    if (defined $filename) {
-        $self->LoadFile($filename);
-    }
-
     $self->SetIcon(Wx::GetWxPerlIcon());
 
     my $accelerators = Wx::AcceleratorTable->new(
         [wxACCEL_CTRL, ord('Q'), wxID_EXIT],
     );
     $self->SetAcceleratorTable($accelerators);
+
+    my $filename = shift @ARGV;
+    if (defined $filename) {
+        $self->LoadFile($filename);
+    }
 
     return $self;
 }
@@ -437,6 +411,14 @@ sub ShowTimeline {
         $dialog->SetTimeline($self->{_keys_by_time});
     }
 
+    if (scalar keys %{$self->{_keys_by_time}} == 0) {
+        my $dialog = Wx::MessageDialog->new($self,
+            'No keys have timestamps!', 'Timeline', wxICON_ERROR|wxOK);
+        $dialog->ShowModal;
+        $dialog->Destroy;
+        return;
+    }
+
     $dialog->Show;
     $dialog->Raise;
     $dialog->{_list1}->SetFocus;
@@ -456,7 +438,9 @@ sub BuildTimeline {
     my %keys_by_time = ();
 
     my $max = 0;
-    my $progress_dialog = Wx::ProgressDialog->new('Building Timeline', 'Ordering registry keys...', $max, $self, wxPD_CAN_ABORT|wxPD_AUTO_HIDE);
+    my $progress_dialog = Wx::ProgressDialog->new('Building Timeline',
+        'Ordering registry keys...', $max, $self, 
+        wxPD_CAN_ABORT|wxPD_AUTO_HIDE);
     $progress_dialog->Update;
 
     while (my $key = $subtree_iter->get_next) {
@@ -541,7 +525,7 @@ sub OnAbout {
     my $info = Wx::AboutDialogInfo->new;
     $info->SetName($FindBin::Script);
     $info->SetVersion($Parse::Win32Registry::VERSION);
-    $info->SetCopyright('Copyright (c) 2010 James Macfarlane');
+    $info->SetCopyright('Copyright (c) 2010-2012 James Macfarlane');
     $info->SetDescription('wxWidgets Registry Viewer for the Parse::Win32Registry module');
     Wx::AboutBox($info);
 }
@@ -762,8 +746,6 @@ sub new {
     $sizer->Add($check2, 0, wxALL, 5);
     $sizer->Add($radio, 0, wxALL, 5);
 
-    my $hsizer = Wx::BoxSizer->new(wxHORIZONTAL);
-
     my $button_sizer = $self->CreateSeparatedButtonSizer(wxOK|wxCANCEL);
 
     $sizer->Add($button_sizer, 0, wxEXPAND|wxALL, 5);
@@ -817,25 +799,26 @@ sub GetSearchSelected {
 sub SetSearchKeys {
     my ($self, $state) = @_;
     $state = 1 if !defined $state;
-    return $self->{_check1}->SetValue($state);
+    $self->{_check1}->SetValue($state);
 }
 
 sub SetSearchValues {
     my ($self, $state) = @_;
     $state = 1 if !defined $state;
-    return $self->{_check2}->SetValue($state);
+    $self->{_check2}->SetValue($state);
 }
 
 sub SetText {
     my ($self, $value) = @_;
     $value = '' if !defined $value;
-    return $self->{_text}->ChangeValue($value);
+    $self->{_text}->ChangeValue($value);
+    $self->{_text}->SetSelection(-1, -1);
 }
 
 sub SetSearchSelected {
     my ($self, $n) = @_;
     $n = 0 if !defined $n;
-    return $self->{_radio}->SetSelection($n);
+    $self->{_radio}->SetSelection($n);
 }
 
 

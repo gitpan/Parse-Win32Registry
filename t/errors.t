@@ -272,7 +272,7 @@ my @tests = (
         filename => 'winnt_error_tests.rf',
         class => 'Parse::Win32Registry::WinNT::Value',
         offset => 0x19c0,
-        warning => 'Could not read data at 0x',
+        warning => 'Invalid offset to data for value \'.*\' at 0x',
         further_tests => [
             ['defined($object)'],
             ['$object->get_name', 'value5'],

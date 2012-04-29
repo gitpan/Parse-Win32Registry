@@ -197,34 +197,6 @@ my $search_menu = Gtk2::Menu->new;
 $search_menu->append($find_menuitem);
 $search_menu->append($find_next_menuitem);
 
-# Bookmarks Menu
-my $add_bookmark_menuitem = Gtk2::MenuItem->new('_Add Bookmark');
-$add_bookmark_menuitem->signal_connect('activate' => \&add_bookmark);
-$add_bookmark_menuitem->add_accelerator('activate', $accel_group,
-    $Gtk2::Gdk::Keysyms{D}, ['control-mask'], ['visible', 'locked']);
-my $edit_bookmarks_menuitem = Gtk2::MenuItem->new('_Edit Bookmarks...');
-$edit_bookmarks_menuitem->signal_connect('activate' => \&edit_bookmarks);
-$edit_bookmarks_menuitem->add_accelerator('activate', $accel_group,
-    $Gtk2::Gdk::Keysyms{B}, ['control-mask'], ['visible', 'locked']);
-
-my $bookmarks_menu = Gtk2::Menu->new;
-$bookmarks_menu->append($add_bookmark_menuitem);
-$bookmarks_menu->append($edit_bookmarks_menuitem);
-
-my $bookmarks_separator; # placeholder, becomes separator for bookmarks
-
-# Reports Menu
-my $show_report_menuitem = Gtk2::MenuItem->new('Show _Bookmark Report...');
-$show_report_menuitem->signal_connect('activate' => \&view_report);
-$show_report_menuitem->add_accelerator('activate', $accel_group,
-    $Gtk2::Gdk::Keysyms{R}, ['control-mask'], ['visible', 'locked']);
-#my $dump_loaded_keys_menuitem = Gtk2::MenuItem->new('Dump loaded keys');
-#$dump_loaded_keys_menuitem->signal_connect('activate' => \&dump_loaded_keys);
-
-my $view_menu = Gtk2::Menu->new;
-$view_menu->append($show_report_menuitem);
-#$view_menu->append($dump_loaded_keys_menuitem);
-
 # Help Menu
 my $about_menuitem = Gtk2::MenuItem->new('_About...');
 $about_menuitem->signal_connect('activate' => \&about);
@@ -244,14 +216,6 @@ $menubar->append($edit_menuitem);
 my $search_menuitem = Gtk2::MenuItem->new('_Search');
 $search_menuitem->set_submenu($search_menu);
 $menubar->append($search_menuitem);
-
-my $bookmarks_menuitem = Gtk2::MenuItem->new('_Bookmarks');
-$bookmarks_menuitem->set_submenu($bookmarks_menu);
-$menubar->append($bookmarks_menuitem);
-
-my $view_menuitem = Gtk2::MenuItem->new('_View');
-$view_menuitem->set_submenu($view_menu);
-$menubar->append($view_menuitem);
 
 my $help_menuitem = Gtk2::MenuItem->new('_Help');
 $help_menuitem->set_submenu($help_menu);
@@ -278,123 +242,6 @@ $window->add($main_vbox);
 $window->add_accel_group($accel_group);
 $window->set_title($script_name);
 $window->show_all;
-
-### BOOKMARK STORE
-
-my $bookmark_store = Gtk2::ListStore->new(
-    'Glib::String', 'Glib::String', 'Glib::Scalar',
-);
-# 0 = bookmark name
-# 1 = bookmark location (subkey path)
-# 2 = bookmark menuitem
-
-sub build_bookmarks_dialog {
-    my $bookmark_view = Gtk2::TreeView->new($bookmark_store);
-    $bookmark_view->set_reorderable(TRUE);
-
-    my $bookmark_column0 = Gtk2::TreeViewColumn->new_with_attributes(
-        'Bookmark', Gtk2::CellRendererText->new, 'text', 0);
-    $bookmark_column0->set_resizable(TRUE);
-    $bookmark_view->append_column($bookmark_column0);
-
-    my $bookmark_location_cell = Gtk2::CellRendererText->new;
-    my $bookmark_column1 = Gtk2::TreeViewColumn->new_with_attributes(
-        'Path From Root', $bookmark_location_cell, 'text', 1);
-    $bookmark_location_cell->set('ellipsize', 'end');
-    $bookmark_column1->set_resizable(FALSE);
-    $bookmark_view->append_column($bookmark_column1);
-
-    my $scrolled_bookmark_view = Gtk2::ScrolledWindow->new;
-    $scrolled_bookmark_view->set_policy('automatic', 'automatic');
-    $scrolled_bookmark_view->set_shadow_type('in');
-    $scrolled_bookmark_view->add($bookmark_view);
-
-    my $label = Gtk2::Label->new;
-    $label->set_markup('<i>Drag bookmarks to reorder them</i>');
-
-    my $dialog = Gtk2::Dialog->new('Edit Bookmarks', $window, 'modal',
-        'gtk-remove' => 50,
-        'gtk-ok' => 'ok',
-    );
-    $dialog->resize($window_width * 0.8, $window_height * 0.8);
-    $dialog->vbox->pack_start($scrolled_bookmark_view, TRUE, TRUE, 0);
-    $dialog->vbox->pack_start($label, FALSE, FALSE, 5);
-    $dialog->set_default_response('ok');
-
-    $dialog->signal_connect(delete_event => sub {
-        $dialog->hide;
-        return TRUE;
-    });
-    $dialog->signal_connect(response => sub {
-        my ($dialog, $response) = @_;
-        if ($response eq '50') {
-            # Remove selected bookmark
-            my $selection = $bookmark_view->get_selection;
-            my $iter = $selection->get_selected;
-            if (defined $iter) {
-                my $menuitem = $bookmark_store->get($iter, 2);
-                $menuitem->destroy;
-                $bookmark_store->remove($iter);
-            }
-        }
-        else {
-            # Before exiting, move menuitems into current bookmark order
-            my $iter = $bookmark_store->get_iter_first;
-            while (defined $iter) {
-                my $menuitem = $bookmark_store->get($iter, 2);
-                $bookmarks_menu->remove($menuitem);
-                $bookmarks_menu->append($menuitem);
-                $iter = $bookmark_store->iter_next($iter);
-            }
-            $dialog->hide;
-        }
-    });
-
-    return $dialog;
-}
-
-my $bookmarks_dialog = build_bookmarks_dialog;
-
-my $report_view;
-
-sub build_report_dialog {
-    $report_view = Gtk2::TextView->new;
-    $report_view->set_editable(FALSE);
-    $report_view->modify_font(Gtk2::Pango::FontDescription->from_string('monospace'));
-
-    my $text_buffer = $report_view->get_buffer;
-
-    my $scrolled_report_view = Gtk2::ScrolledWindow->new;
-    $scrolled_report_view->set_policy('automatic', 'automatic');
-    $scrolled_report_view->set_shadow_type('in');
-    $scrolled_report_view->add($report_view);
-
-    my $dialog = Gtk2::Dialog->new('Report', $window, 'modal',
-        'gtk-save' => 50,
-        'gtk-cancel' => 'cancel',
-    );
-    $dialog->resize($window_width * 0.8, $window_height * 0.8);
-    $dialog->vbox->add($scrolled_report_view);
-    $dialog->set_default_response('ok');
-
-    $dialog->signal_connect(delete_event => sub {
-        $dialog->hide;
-        return TRUE;
-    });
-    $dialog->signal_connect(response => sub {
-        my ($dialog, $response) = @_;
-        if ($response eq '50') {
-            save_report();
-        }
-        else {
-            $dialog->hide;
-        }
-    });
-
-    return $dialog;
-}
-
-my $report_dialog = build_report_dialog;
 
 ### GLOBALS
 
@@ -644,22 +491,6 @@ sub open_file {
     }
 }
 
-sub save_report {
-    if (my $filename = choose_file('Save Log File As', 'save', "report.txt")) {
-        my $basename = basename $filename;
-        if (open my $fh, ">", $filename) {
-            my $text_buffer = $report_view->get_buffer;
-            my $start_iter = $text_buffer->get_start_iter;
-            my $end_iter = $text_buffer->get_end_iter;
-            print {$fh} $text_buffer->get_text($start_iter, $end_iter, 0);
-#            show_message("info", "Report saved to '$basename'");
-        }
-        else {
-            show_message("error", "Error saving log to '$basename'");
-        }
-    }
-}
-
 sub close_file {
     $tree_store->clear;
     $list_store->clear;
@@ -677,7 +508,7 @@ sub about {
     Gtk2->show_about_dialog(undef,
         'program-name' => $script_name,
         'version' => $Parse::Win32Registry::VERSION,
-        'copyright' => 'Copyright (c) 2008,2009,2010 James Macfarlane',
+        'copyright' => 'Copyright (c) 2008-2012 James Macfarlane',
         'comments' => 'GTK2 Registry Viewer for the Parse::Win32Registry module',
     );
 }
@@ -698,76 +529,15 @@ sub show_message {
     $dialog->destroy;
 }
 
-sub create_bookmark_menuitem {
-    my ($name, $subkey_path) = @_;
-
-    my $display_name = $name;
-    $display_name =~ s/_/__/g;
-    if (my $menuitem = Gtk2::MenuItem->new($display_name)) {
-        $bookmarks_menu->append($menuitem);
-        $bookmarks_menu->show_all;
-        if (my $iter = $bookmark_store->append) {
-            $bookmark_store->set($iter,
-                0, $name,
-                1, $subkey_path,
-                2, $menuitem,
-            );
-        }
-        $menuitem->signal_connect('activate' => \&go_to_bookmark,
-                                                 $subkey_path);
-    }
-}
-
-sub add_bookmark {
-    my $iter = $tree_selection->get_selected;
-    return if !defined $iter;
-
-    # Add separator for bookmarks if it is not already there
-    if (!defined $bookmarks_separator) {
-        $bookmarks_separator = Gtk2::SeparatorMenuItem->new;
-        $bookmarks_menu->append($bookmarks_separator);
-    }
-
-    my $key = $tree_store->get($iter, 3);
-
-    # Remove root key name to get subkey path
-    my $subkey_path = (split(/\\/, $key->get_path, 2))[1];
-
-    if (defined $subkey_path) {
-        my $name = $key->get_name;
-        create_bookmark_menuitem($name, $subkey_path);
-    }
-}
-
-sub edit_bookmarks {
-    $bookmarks_dialog->show_all;
-}
-
-sub remove_all_bookmarks {
-    my $iter = $bookmark_store->get_iter_first;
-    # destroy all the bookmark menu items
-    while (defined $iter) {
-        my $menuitem = $bookmark_store->get($iter, 2);
-        $bookmarks_menu->remove($menuitem);
-        $menuitem->destroy;
-        $iter = $bookmark_store->iter_next($iter);
-    }
-    # then empty the bookmark store
-    $bookmark_store->clear;
-}
-
-sub go_to_bookmark {
-    my ($menuitem, $path) = @_;
-    go_to_subkey($path);
-}
-
 sub copy_key_path {
     my $tree_iter = $tree_selection->get_selected;
+    my $clip = '';
     if (defined $tree_iter) {
-       my $key = $tree_store->get($tree_iter, 3);
-       my $clipboard = Gtk2::Clipboard->get(Gtk2::Gdk->SELECTION_CLIPBOARD);
-       $clipboard->set_text($key->get_path);
+        my $key = $tree_store->get($tree_iter, 3);
+        $clip = $key->get_path;
     }
+    my $clipboard = Gtk2::Clipboard->get(Gtk2::Gdk->SELECTION_CLIPBOARD);
+    $clipboard->set_text($clip);
 }
 
 sub go_to_value {
@@ -1002,13 +772,12 @@ sub find {
     $dialog->show_all;
 
     my $response = $dialog->run;
-    $dialog->destroy;
-
     if ($response eq 'ok') {
         $search_keys = $check1->get_active;
         $search_values = $check2->get_active;
         $search_selected = $radio2->get_active;
         $find_param = $entry->get_text;
+        $dialog->destroy;
         $find_iter = undef;
         if ($find_param ne '') {
             $find_iter = $search_selected
@@ -1017,55 +786,7 @@ sub find {
             find_next;
         }
     }
-}
-
-sub dump_loaded_keys {
-    print "Dumping loaded keys:\n";
-    $tree_store->foreach(sub {
-        my ($model, $path, $iter) = @_;
-
-        my $key = $model->get($iter, 3);
-        if (defined $key) {
-            print $key->get_path, "\n";
-        }
-        return FALSE;
-    });
-}
-
-sub view_report {
-    my $root_iter = $tree_store->get_iter_first;
-    if (!defined $root_iter) {
-        print "(no registry file loaded)\n";
-        return;
+    else {
+        $dialog->destroy;
     }
-
-    my $text_buffer = $report_view->get_buffer;
-    $text_buffer->set_text('');
-
-    my $root_key = $tree_store->get($root_iter, 3);
-    my $iter = $bookmark_store->get_iter_first;
-    while (defined $iter) {
-        my $name = $bookmark_store->get($iter, 0);
-        my $path = $bookmark_store->get($iter, 1);
-
-        if (my $key = $root_key->get_subkey($path)) {
-            my $str = $key->as_string . "\n";
-            $str =~ s/\0/[NUL]/g;
-            $text_buffer->insert_at_cursor($str);
-            foreach my $value ($key->get_list_of_values) {
-                my $value_name = $value->get_name;
-                $value_name = "(Default)" if $value_name eq "";
-                $value_name =~ s/\0/[NUL]/g;
-                my $value_type = $value->get_type_as_string;
-                my $str = "$value_name ($value_type):\n";
-                $str .= hexdump($value->get_raw_data);
-                $text_buffer->insert_at_cursor($str);
-            }
-            $text_buffer->insert_at_cursor("\n");
-        }
-        $iter = $bookmark_store->iter_next($iter);
-    }
-
-    $report_dialog->show_all;
 }
-

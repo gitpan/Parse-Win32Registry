@@ -15,15 +15,7 @@ GetOptions('parse-info|p' => \my $show_parse_info,
            'allocated|a'  => \my $list_allocated,
            'keys|k'       => \my $list_keys,
            'values|v'     => \my $list_values,
-           'security|s'   => \my $list_security,
-           'warnings|w'   => \my $show_warnings);
-
-if ($show_warnings) {
-    Parse::Win32Registry->enable_warnings;
-}
-else {
-    Parse::Win32Registry->disable_warnings;
-}
+           'security|s'   => \my $list_security);
 
 my $filename = shift or die usage();
 
@@ -60,7 +52,7 @@ associated with but are not actually keys or values. Additionally,
 some of the keys, values, and associated elements displayed
 will no longer be active and may be invalid or deleted.
 
-$script_name <filename> [-k] [-v] [-s] [-a] [-p] [-u] [-w]
+$script_name <filename> [-k] [-v] [-s] [-a] [-p] [-u]
     -k or --keys        list only 'key' entries
     -v or --values      list only 'value' entries
     -s or --security    list only 'security' entries
@@ -68,6 +60,5 @@ $script_name <filename> [-k] [-v] [-s] [-a] [-p] [-u] [-w]
     -p or --parse-info  show the technical information for an entry
                         instead of the string representation
     -u or --unparsed    show the unparsed on-disk entries as a hex dump
-    -w or --warnings    display warnings of invalid keys and values
 USAGE
 }

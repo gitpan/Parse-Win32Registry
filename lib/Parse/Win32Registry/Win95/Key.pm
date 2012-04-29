@@ -204,18 +204,4 @@ sub get_value_iterator {
     }
 }
 
-sub get_associated_offsets {
-    my $self = shift;
-
-    my @owners = ();
-
-    push @owners, $self->{_offset};
-
-    if (defined $self->{_offset_to_rgdb_entry}) {
-        push @owners, $self->{_offset_to_rgdb_entry};
-    }
-
-    return @owners;
-}
-
 1;

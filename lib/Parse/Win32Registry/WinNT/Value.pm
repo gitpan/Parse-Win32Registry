@@ -57,6 +57,11 @@ sub new {
     }
     # allocated should be true
 
+    if ($length < VK_HEADER_LENGTH) {
+        warnf('Invalid value entry length at 0x%x', $offset);
+        return;
+    }
+
     if ($sig ne 'vk') {
         warnf('Invalid signature for value at 0x%x', $offset);
         return;
@@ -67,6 +72,7 @@ sub new {
         warnf('Could not read name for value at 0x%x', $offset);
         return;
     }
+
     if ($flags & 1) {
         $name = decode($Parse::Win32Registry::Base::CODEPAGE, $name);
     }
@@ -74,10 +80,9 @@ sub new {
         $name = decode('UCS-2LE', $name);
     };
 
-    my $data;
-
     # If the top bit of the data_length is set, then
     # the value is inline and stored in the offset to data field (at 0xc).
+    my $data;
     my $data_inline = $data_length >> 31;
     if ($data_inline) {
         # REG_DWORDs are always inline, but I've also seen
@@ -94,15 +99,15 @@ sub new {
         }
     }
     else {
-        $offset_to_data += OFFSET_TO_FIRST_HBIN
-            if $offset_to_data != 0xffffffff;
-
-        sysseek($fh, $offset_to_data + 4, 0);
-        $bytes_read = sysread($fh, $data, $data_length);
-        if ($bytes_read != $data_length) {
-            warnf("Could not read data at 0x%x for value '%s' at 0x%x",
-                $offset_to_data, $name, $offset);
-            $data = undef;
+        if ($offset_to_data != 0 && $offset_to_data != 0xffffffff) {
+            $offset_to_data += OFFSET_TO_FIRST_HBIN;
+            if ($offset_to_data < ($regfile->get_length - $data_length)) {
+                $data = _extract_data($fh, $offset_to_data, $data_length);
+            }
+            else {
+                warnf("Invalid offset to data for value '%s' at 0x%x",
+                    $name, $offset);
+            }
         }
     }
 
@@ -125,6 +130,94 @@ sub new {
     return $self;
 }
 
+sub _extract_data {
+    my $fh = shift;
+    my $offset_to_data = shift;
+    my $data_length = shift;
+
+    if ($offset_to_data == 0 || $offset_to_data == 0xffffffff) {
+        return undef;
+    }
+
+    sysseek($fh, $offset_to_data, 0);
+    my $bytes_read = sysread($fh, my $data_header, 4);
+    if ($bytes_read != 4) {
+        warnf('Could not read data at 0x%x', $offset_to_data);
+        return undef;
+    }
+
+    my ($max_data_length) = unpack('V', $data_header);
+
+    my $data_allocated = 0;
+    if ($max_data_length > 0x7fffffff) {
+        $data_allocated = 1;
+        $max_data_length = (0xffffffff - $max_data_length) + 1;
+    }
+    # data_allocated should be true
+
+    my $data;
+
+    if ($data_length > $max_data_length) {
+        $bytes_read = sysread($fh, my $db_entry, 8);
+        if ($bytes_read != 8) {
+            warnf('Could not read data at 0x%x', $offset_to_data);
+            return undef;
+        }
+
+        my ($sig, $num_data_blocks, $offset_to_data_block_list)
+            = unpack('a2vV', $db_entry);
+        if ($sig ne 'db') {
+            warnf('Invalid signature for big data at 0x%x', $offset_to_data);
+            return undef;
+        }
+        $offset_to_data_block_list += OFFSET_TO_FIRST_HBIN;
+
+        sysseek($fh, $offset_to_data_block_list + 4, 0);
+        $bytes_read = sysread($fh, my $data_block_list, $num_data_blocks * 4);
+        if ($bytes_read != $num_data_blocks * 4) {
+            warnf('Could not read data block list at 0x%x',
+                $offset_to_data_block_list);
+            return undef;
+        }
+
+        $data = "";
+        my @offsets = map { OFFSET_TO_FIRST_HBIN + $_ }
+            unpack("V$num_data_blocks", $data_block_list);
+        foreach my $offset (@offsets) {
+            sysseek($fh, $offset, 0);
+            $bytes_read = sysread($fh, my $block_header, 4);
+            if ($bytes_read != 4) {
+                warnf('Could not read data block at 0x%x', $offset);
+                return undef;
+            }
+            my ($block_length) = unpack('V', $block_header);
+            if ($block_length > 0x7fffffff) {
+                $block_length = (0xffffffff - $block_length) + 1;
+            }
+            $bytes_read = sysread($fh, my $block_data, $block_length - 8);
+            if ($bytes_read != $block_length - 8) {
+                warnf('Could not read data block at 0x%x', $offset);
+                return undef;
+            }
+            $data .= $block_data;
+        }
+        if (length($data) < $data_length) {
+            warnf("Insufficient data blocks for data at 0x%x", $offset_to_data);
+            return undef;
+        }
+        $data = substr($data, 0, $data_length);
+        return $data;
+    }
+    else {
+        $bytes_read = sysread($fh, $data, $data_length);
+        if ($bytes_read != $data_length) {
+            warnf("Could not read data at 0x%x", $offset_to_data);
+            return undef;
+        }
+    }
+    return $data;
+}
+
 sub get_data {
     my $self = shift;
 
@@ -137,6 +230,15 @@ sub get_data {
     if ($type == REG_DWORD) {
         if (length($data) == 4) {
             $data = unpack('V', $data);
+        }
+        else {
+            # incorrect length for dword data
+            $data = undef;
+        }
+    }
+    elsif ($type == REG_DWORD_BIG_ENDIAN) {
+        if (length($data) == 4) {
+            $data = unpack('N', $data);
         }
         else {
             # incorrect length for dword data
@@ -171,13 +273,19 @@ sub as_regedit_export {
 
     my $type = $self->get_type;
 
+    # XXX
+#    if (!defined $self->{_data}) {
+#        $name = $name eq '' ? '@' : qq{"$name"};
+#        return qq{; $name=(invalid data)\n};
+#    }
+
     if ($type == REG_SZ) {
         $export .= '"' . $self->get_data . '"';
         $export .= "\n";
     }
     elsif ($type == REG_BINARY) {
         $export .= "hex:";
-        $export .= format_octets($self->get_data, length($export));
+        $export .= format_octets($self->{_data}, length($export));
     }
     elsif ($type == REG_DWORD) {
         my $data = $self->get_data;
@@ -194,9 +302,8 @@ sub as_regedit_export {
         $export .= format_octets($data, length($export));
     }
     else {
-        my $data = $self->get_data;
         $export .= sprintf("hex(%x):", $type);
-        $export .= format_octets($data, length($export));
+        $export .= format_octets($self->{_data}, length($export));
     }
     return $export;
 }
@@ -220,20 +327,6 @@ sub parse_info {
             $self->{_data_length};
     }
     return $info;
-}
-
-sub get_associated_offsets {
-    my $self = shift;
-
-    my @owners = ();
-
-    push @owners, $self->{_offset};
-
-    if (!$self->{_data_inline}) {
-        push @owners, $self->{_offset_to_data};
-    }
-
-    return @owners;
 }
 
 1;

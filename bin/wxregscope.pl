@@ -163,7 +163,7 @@ sub OnGetItemText {
     elsif ($column == 4) {
         my $name = '';
         if ($entry->can('get_name')) {
-             $name = $entry->get_name; # FIXME nulls?
+             $name = $entry->get_name;
              $name =~ s/\0/[NUL]/g;
              $name =~ s/\n/[LF]/g;
              $name =~ s/\r/[CR]/g;
@@ -280,12 +280,14 @@ sub SetText {
     my ($self, $value) = @_;
 
     $value = '' if !defined $value;
-    return $self->{_text}->ChangeValue($value);
+    $self->{_text}->ChangeValue($value);
+    $self->{_text}->SetSelection(-1, -1);
 }
 
 
 package ScopeFrame;
 
+use Encode;
 use File::Basename;
 use FindBin;
 use Parse::Win32Registry;
@@ -316,7 +318,7 @@ sub new {
     $menu2->Append(wxID_FIND, "&Find...\tCtrl+F");
     $menu2->Append(ID_FIND_NEXT, "Find &Next\tF3");
     $menu2->AppendSeparator;
-    $menu2->Append(ID_GO_TO, "&Go To Offset...\tCtrl+I");
+    $menu2->Append(ID_GO_TO, "&Go To Offset...\tCtrl+G");
 
     my $menu3 = Wx::Menu->new;
     $menu3->Append(ID_SELECT_FONT, "Select &Font...");
@@ -346,7 +348,7 @@ sub new {
 
     my $vsplitter = Wx::SplitterWindow->new($self, -1, wxDefaultPosition, wxDefaultSize, wxSP_NOBORDER);
 
-    my $text = Wx::TextCtrl->new($vsplitter, -1, '', wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE|wxTE_DONTWRAP);
+    my $text = Wx::TextCtrl->new($vsplitter, -1, '', wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE|wxTE_DONTWRAP|wxTE_READONLY);
     $text->SetFont(Wx::Font->new(10, wxMODERN, wxNORMAL, wxNORMAL));
 
     my $hsplitter = Wx::SplitterWindow->new($vsplitter, -1, wxDefaultPosition, wxDefaultSize, wxSP_NOBORDER);
@@ -373,17 +375,17 @@ sub new {
     EVT_LIST_ITEM_SELECTED($self, $list1, \&OnBlockSelected);
     EVT_LIST_ITEM_SELECTED($self, $list2, \&OnEntrySelected);
 
-    my $filename = shift @ARGV;
-    if (defined $filename) {
-        $self->LoadFile($filename);
-    }
-
     $self->SetIcon(Wx::GetWxPerlIcon());
 
     my $accelerators = Wx::AcceleratorTable->new(
         [wxACCEL_CTRL, ord('Q'), wxID_EXIT],
     );
     $self->SetAcceleratorTable($accelerators);
+
+    my $filename = shift @ARGV;
+    if (defined $filename) {
+        $self->LoadFile($filename);
+    }
 
     return $self;
 }
@@ -439,20 +441,19 @@ sub OnBlockSelected {
 
     my $index = $event->GetIndex;
     my $block = $self->{_list1}->GetBlock($index);
-#    if (defined $block) {
-        $self->{_list2}->SetBlock($block);
 
-        my $parse_info = $block->parse_info; # FIXME nulls - not relevant
-        $parse_info =~ s/\0/[NUL]/g;
-        $parse_info =~ s/\n/[LF]/g;
-        $parse_info =~ s/\r/[CR]/g;
-        my $details = $parse_info . "\n" . $block->unparsed;
+    $self->{_list2}->SetBlock($block);
 
-        $self->{_text}->ChangeValue($details);
+    my $parse_info = $block->parse_info;
+    $parse_info =~ s/\0/[NUL]/g;
+    $parse_info =~ s/\n/[LF]/g;
+    $parse_info =~ s/\r/[CR]/g;
+    my $details = $parse_info . "\n" . $block->unparsed;
 
-        my $status = sprintf "Block Offset: 0x%x", $block->get_offset;
-        $self->{_statusbar}->SetStatusText($status);
-#    }
+    $self->{_text}->ChangeValue($details);
+
+    my $status = sprintf "Block Offset: 0x%x", $block->get_offset;
+    $self->{_statusbar}->SetStatusText($status);
 }
 
 sub OnEntrySelected {
@@ -461,18 +462,16 @@ sub OnEntrySelected {
     my $index = $event->GetIndex;
     my $entry = $self->{_list2}->GetEntry($index);
 
-#    if (defined $entry) {
-        my $parse_info = $entry->parse_info; # FIXME nulls
-        $parse_info =~ s/\0/[NUL]/g;
-        $parse_info =~ s/\n/[LF]/g;
-        $parse_info =~ s/\r/[CR]/g;
-        my $details = $parse_info . "\n" . $entry->unparsed;
+    my $parse_info = $entry->parse_info;
+    $parse_info =~ s/\0/[NUL]/g;
+    $parse_info =~ s/\n/[LF]/g;
+    $parse_info =~ s/\r/[CR]/g;
+    my $details = $parse_info . "\n" . $entry->unparsed;
 
-        $self->{_text}->ChangeValue($details);
+    $self->{_text}->ChangeValue($details);
 
-        my $status = sprintf "Entry Offset: 0x%x", $entry->get_offset;
-        $self->{_statusbar}->SetStatusText($status);
-#    }
+    my $status = sprintf "Entry Offset: 0x%x", $entry->get_offset;
+    $self->{_statusbar}->SetStatusText($status);
 }
 
 sub OnAbout {
@@ -481,7 +480,7 @@ sub OnAbout {
     my $info = Wx::AboutDialogInfo->new;
     $info->SetName($FindBin::Script);
     $info->SetVersion($Parse::Win32Registry::VERSION);
-    $info->SetCopyright('Copyright (c) 2010 James Macfarlane');
+    $info->SetCopyright('Copyright (c) 2010-2012 James Macfarlane');
     $info->SetDescription('wxWidgets Registry Scope for the Parse::Win32Registry module');
     Wx::AboutBox($info);
 }
@@ -520,14 +519,21 @@ sub FindNext {
     my $iter_finished = 1;
 
     while (my $entry = $find_iter->get_next) {
-        if ($entry->can('get_name')) {
-            my $name = $entry->get_name;
-            if (index(lc $name, lc $find_param) >= 0) {
-                $self->{_list1}->GoToBlock($entry->get_offset);
-                $self->{_list2}->GoToEntry($entry->get_offset);
-                $iter_finished = 0;
-                last;
+        my $found = 0;
+        if (index(lc $entry->get_raw_bytes, lc $find_param) > -1) {
+            $found = 1;
+        }
+        else {
+            my $uni_find_param = encode("UCS-2LE", $find_param);
+            if (index(lc $entry->get_raw_bytes, lc $uni_find_param) > -1) {
+                $found = 1;
             }
+        }
+        if ($found) {
+            $self->{_list1}->GoToBlock($entry->get_offset);
+            $self->{_list2}->GoToEntry($entry->get_offset);
+            $iter_finished = 0;
+            last;
         }
 
         if (defined $progress_dialog) {

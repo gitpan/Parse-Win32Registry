@@ -6,6 +6,12 @@ use warnings;
 use Carp;
 use Parse::Win32Registry::Base qw(:all);
 
+sub get_regfile {
+    my $self = shift;
+
+    return $self->{_regfile};
+}
+
 sub get_offset {
     my $self = shift;
 

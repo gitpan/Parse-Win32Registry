@@ -94,10 +94,6 @@ sub hexdump {
         $output .= '  ';
         $output .= ' ' x $indent;
         $row =~ tr/\x20-\x7e/./c;
-#        $row = decode($CODEPAGE, $row);
-#        $row =~ s/\x{00ad}/ /g;
-#        $row =~ s/[\x{0000}-\x{001f}]/\x{00b7}/g;
-#        $row =~ s/[\x{fffd}\x{007f}]/\x{25ab}/g;
         $output .= $row;
         $output .= "\n";
         $pos += $len;
@@ -113,10 +109,6 @@ sub hexdump {
         }
         $output .= '  ';
         $row =~ tr/\x20-\x7e/./c;
-#        $row = decode($CODEPAGE, $row);
-#        $row =~ s/\x{00ad}/ /g;
-#        $row =~ s/[\x{0000}-\x{001f}]/\x{00b7}/g;
-#        $row =~ s/[\x{fffd}\x{007f}]/\x{25ab}/g;
         $output .= $row;
         $output .= "\n";
         $pos += 16;
@@ -178,7 +170,7 @@ sub unpack_windows_time {
     my $epoch_offset = timegm(0, 0, 0, 1, 0, 70);
     $epoch_time += $epoch_offset;
 
-    if ($epoch_time < 0) {
+    if ($epoch_time < 0 || $epoch_time > 0x7fffffff) {
         $epoch_time = undef;
     }
 
@@ -187,9 +179,14 @@ sub unpack_windows_time {
 
 sub iso8601 {
     my $time = shift;
+    my $tz = shift;
 
     if (!defined $time) {
         return '(undefined)';
+    }
+
+    if (!defined $tz || $tz ne 'Z') {
+        $tz = 'Z'
     }
 
     # On Windows, gmtime will return undef if $time < 0 or > 0x7fffffff
@@ -199,8 +196,8 @@ sub iso8601 {
     my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday) = gmtime $time;
 
     # The final 'Z' indicates UTC ("zero meridian")
-    return sprintf '%04d-%02d-%02dT%02d:%02d:%02dZ',
-        1900+$year, 1+$mon, $mday, $hour, $min, $sec;
+    return sprintf '%04d-%02d-%02dT%02d:%02d:%02d%s',
+        1900+$year, 1+$mon, $mday, $hour, $min, $sec, $tz;
 }
 
 sub unpack_string {
@@ -681,6 +678,10 @@ our %WellKnownSids = (
     'S-1-5-32-550' => 'Print Operators',
     'S-1-5-32-551' => 'Backup Operators',
     'S-1-5-32-552' => 'Replicators',
+    'S-1-16-4096' => 'Low Integrity Level',
+    'S-1-16-8192' => 'Medium Integrity Level',
+    'S-1-16-12288' => 'High Integrity Level',
+    'S-1-16-16384' => 'System Integrity Level',
 );
 
 sub get_name {
@@ -727,7 +728,7 @@ sub new {
     # ACCESS_ALLOWED_ACE_TYPE = 0
     # ACCESS_DENIED_ACE_TYPE  = 1
     # SYSTEM_AUDIT_ACE_TYPE   = 2
-    # SYSTEM_ALARM_ACE_TYPE   = 3
+    # SYSTEM_MANDATORY_LABEL_ACE_TYPE = x011
 
     # Flags:
     # OBJECT_INHERIT_ACE         = 0x01
@@ -756,7 +757,7 @@ sub new {
 
     # Only the following types are currently unpacked:
     # 0 (ACCESS_ALLOWED_ACE), 1 (ACCESS_DENIED_ACE), 2 (SYSTEM_AUDIT_ACE)
-    if ($type >= 0 && $type <= 2) {
+    if ($type >= 0 && $type <= 2 || $type == 0x11) {
         my $access_mask = unpack('x4V', $data);
         my $sid = Parse::Win32Registry::SID->new(substr($data, 8,
                                                         $ace_len - 8));
@@ -797,6 +798,15 @@ our @Types = qw(
     ACCESS_DENIED_OBJECT
     SYSTEM_AUDIT_OBJECT
     SYSTEM_ALARM_OBJECT
+    ACCESS_ALLOWED_CALLBACK
+    ACCESS_DENIED_CALLBACK
+    ACCESS_ALLOWED_CALLBACK_OBJECT
+    ACCESS_DENIED_CALLBACK_OBJECT
+    SYSTEM_AUDIT_CALLBACK
+    SYSTEM_ALARM_CALLBACK
+    SYSTEM_AUDIT_CALLBACK_OBJECT
+    SYSTEM_ALARM_CALLBACK_OBJECT
+    SYSTEM_MANDATORY_LABEL
 );
 
 sub _look_up_ace_type {
@@ -994,28 +1004,36 @@ sub new {
                                                           $offset_to_owner));
         return if !defined $owner;
         $self->{_owner} = $owner;
-        $sd_len += $owner->get_length;
+        if ($offset_to_owner + $owner->get_length > $sd_len) {
+            $sd_len = $offset_to_owner + $owner->get_length;
+        }
     }
     if ($offset_to_group > 0 && $offset_to_group < length($data)) {
         my $group = Parse::Win32Registry::SID->new(substr($data,
                                                           $offset_to_group));
         return if !defined $group;
         $self->{_group} = $group;
-        $sd_len += $group->get_length;
+        if ($offset_to_group + $group->get_length > $sd_len) {
+            $sd_len = $offset_to_group + $group->get_length;
+        }
     }
     if ($offset_to_sacl > 0 && $offset_to_sacl < length($data)) {
         my $sacl = Parse::Win32Registry::ACL->new(substr($data,
                                                          $offset_to_sacl));
         return if !defined $sacl;
         $self->{_sacl} = $sacl;
-        $sd_len += $sacl->get_length;
+        if ($offset_to_sacl + $sacl->get_length > $sd_len) {
+            $sd_len = $offset_to_sacl + $sacl->get_length;
+        }
     }
     if ($offset_to_dacl > 0 && $offset_to_dacl < length($data)) {
         my $dacl = Parse::Win32Registry::ACL->new(substr($data,
                                                          $offset_to_dacl));
         return if !defined $dacl;
         $self->{_dacl} = $dacl;
-        $sd_len += $dacl->get_length;
+        if ($offset_to_dacl + $dacl->get_length > $sd_len) {
+            $sd_len = $offset_to_dacl + $dacl->get_length;
+        }
     }
     $self->{_length} = $sd_len;
     bless $self, $class;
